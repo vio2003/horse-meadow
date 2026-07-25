@@ -295,9 +295,9 @@ grow-up swell, and the save surviving a reload. Production build is clean.
 - Foals can't be stabled, because stabling starts from riding and you can't ride
   a foal. That reads as a natural consequence rather than a rule to explain, so
   it stays until she asks otherwise.
-- Eight skinned, shadow-casting horses instead of five. 120fps on a laptop, but
-  **the iPad is the machine that matters** and hasn't been checked yet. If it
-  drags, two foals instead of three is a one-line fix.
+- Eight skinned, shadow-casting horses instead of five, up from five. **Checked
+  on the iPad: fine.** If it ever does drag, two foals instead of three is a
+  one-line fix.
 
 ---
 
@@ -389,8 +389,8 @@ clean.
   moment she taps play, and it's the only way she can see the girl she's picking
   rather than an emoji standing in for her. If it costs too much on the iPad,
   pre-rendered thumbnails are the fallback.
-- **Still unverified on the iPad**, which is now carrying eight skinned horses
-  and a skinned girl. That check has been outstanding since the foals.
+- **Checked on the iPad: fine**, carrying eight skinned horses and a skinned
+  girl, plus the picker's second WebGL context on the start screen.
 
 ---
 
@@ -464,5 +464,33 @@ to confirm all eight stay inside the meadow. Production build clean; precache
 - The gaps *between* regions are grass she can see and can't walk on, marked by
   fences and drifts. The meadow has always worked that way; there is just more
   boundary now.
-- **Still unverified on the iPad**, and this adds three regions of scatter to a
-  scene already carrying eight horses and a girl. That check is well overdue.
+- **Checked on the iPad: fine**, with three regions of ground and scatter on top
+  of eight horses and a girl. See the note below on what that means for scope.
+
+
+---
+
+# Performance: the iPad has headroom
+
+Every rung of the ladder above ended with the same open question — *does it still
+run on her iPad?* — because everything was measured on a laptop, where 120fps
+tells you nothing about an A-series GPU. As of `v4` it has been checked on the
+real device and there are **no frame rate problems**.
+
+What that covers, all at once:
+
+- eight skinned, shadow-casting horses (five adults and three foals)
+- a skinned, rigged girl, animated and posed for riding
+- a second WebGL context on the start screen, rendering three more characters
+- four regions of ground, instanced scatter, five houses and a mountain
+- a 2048 shadow map following her around
+
+**What this means for scope.** The mitigations that were held in reserve are not
+needed and should not be pre-emptively applied: two foals instead of three,
+pre-rendered thumbnails instead of the live picker, thinner per-region scatter.
+They stay written down here as the levers to reach for *if* something later
+pushes it over, and the order to reach for them in.
+
+The thing most likely to push it over is more skinned, animated characters —
+that's the expensive category, not ground or scatter. Cats and dragons are both
+open issues; those are the ones to re-check on the device rather than assume.
