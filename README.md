@@ -40,14 +40,43 @@ one builds and publishes; the tag doubles as a record of what she's playing.
 
 Her installed app updates itself on next launch (the service worker is set to
 `autoUpdate`), so she never reinstalls — which also means **a bad deploy reaches
-her**. Check it locally before you tag:
+her**. Two things guard against that.
+
+**The checks run automatically before a tag can leave your machine.**
+`.githooks/pre-push` runs `npm test` whenever you push a `v*` tag, and refuses
+the push if anything fails. Ordinary pushes to `main` aren't touched — they don't
+deploy anything. Bypass with `git push --no-verify` if you ever need to.
+
+If you clone this fresh, turn the hook back on with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+**And try the real artefact on the iPad first:**
 
 ```bash
 npm run build && npm run preview
 ```
 
-That serves the exact production artefact on your network, so you can try it on
-the iPad before anyone else sees it.
+That serves the exact production build on your network.
+
+## Tests
+
+```bash
+npm test
+```
+
+`tests/world.mjs` loads the real game modules through Vite and replays the actual
+movement code frame by frame — it is not a reimplementation, which is the only
+reason it has ever caught anything. It checks that she can ride in through the
+gate from every approach, reach every corner of the courtyard, that each stall is
+reachable, that a tap into a wall resolves somewhere legal, and that a stabled
+horse is still in the same stall after a reload (including when the save is
+corrupt).
+
+It runs locally, not in CI: it boots Vite a few times, and her game shouldn't be
+gated on a remote runner. It takes about a second.
 
 **Why not the App Store:** a free Apple developer account re-signs an app every
 7 days, so it dies on her iPad every week. The paid program is $99/yr. For an

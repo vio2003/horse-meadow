@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "test": "node tests/world.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^8.17.10",

@@ -1,0 +1,24 @@
+#!/bin/sh
+# Run the local checks before a version tag can reach origin.
+#
+# Pushing a v* tag is what promotes a build to the game she plays, so it's the
+# one moment worth blocking. Ordinary pushes to main are left alone — those
+# don't deploy anything.
+#
+# Bypass with `git push --no-verify` if you ever need to.
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/tags/v*)
+      echo "pre-push: $remote_ref promotes to production — running checks first"
+      if ! npm test --silent; then
+        echo "" >&2
+        echo "pre-push: checks FAILED — not promoting $remote_ref." >&2
+        echo "          Fix them, or bypass with: git push --no-verify" >&2
+        exit 1
+      fi
+      echo "pre-push: checks passed — promoting $remote_ref"
+      ;;
+  esac
+done
+exit 0
