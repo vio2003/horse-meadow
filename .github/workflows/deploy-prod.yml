@@ -1,0 +1,51 @@
+name: Deploy to production
+
+# Deliberately NOT triggered by pushes to main.
+#
+# She plays whatever is on production, and main is where half-finished features
+# live. Promotion has to be a deliberate act, or the next commit you push while
+# she's mid-game changes the game she's playing. Two ways to promote:
+#
+#   git tag v2 && git push origin v2      # tag a version
+#   gh workflow run deploy-prod.yml       # or press Run workflow on GitHub
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Two deploys racing would leave whichever finished last on production,
+# regardless of which was newer.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

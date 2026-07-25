@@ -1,0 +1,328 @@
+/*
+  Design language: tack.
+  Every control is a piece of saddlery — tan leather, a stitched edge, brass.
+  It comes from the subject's own world instead of a generic game HUD, and the
+  warm leather sits comfortably against the meadow greens without competing
+  with the horses themselves.
+
+  Type is the iPad's own rounded system face. It's the friendliest face already
+  on the device, it loads instantly, and it keeps the app fully offline.
+*/
+
+:root {
+  --sky: #9ac7e8;
+  --meadow: #79b364;
+  --leather: #a9663c;
+  --leather-dark: #7c4726;
+  --stitch: #f6e3c4;
+  --buttermilk: #fff3d0;
+  --raspberry: #e4557a;
+  --bark: #3b2a20;
+
+  --tap: 88px;
+
+  font-family: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI Variable",
+    "Nunito", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  background: var(--sky);
+  color: var(--bark);
+}
+
+canvas {
+  touch-action: none;
+  display: block;
+}
+
+.layer {
+  position: fixed;
+  inset: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  pointer-events: none;
+}
+
+.layer > * {
+  pointer-events: auto;
+}
+
+/* ---------- tack button ---------- */
+
+.tack {
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 50%;
+  border: none;
+  background: radial-gradient(circle at 32% 26%, #c07e50, var(--leather) 62%,
+      var(--leather-dark));
+  box-shadow: 0 6px 0 var(--leather-dark), 0 10px 22px rgba(59, 42, 32, 0.35),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.08);
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  line-height: 1;
+  position: relative;
+  transition: transform 90ms ease, box-shadow 90ms ease;
+}
+
+/* the stitched edge — the detail that makes it tack instead of a UI circle */
+.tack::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  border: 2px dashed var(--stitch);
+  opacity: 0.55;
+}
+
+.tack:active,
+.tack.held {
+  transform: translateY(5px);
+  box-shadow: 0 1px 0 var(--leather-dark), 0 4px 10px rgba(59, 42, 32, 0.3),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.tack:focus-visible {
+  outline: 4px solid var(--buttermilk);
+  outline-offset: 4px;
+}
+
+.tack--wide {
+  width: auto;
+  min-width: 150px;
+  height: 68px;
+  border-radius: 34px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--buttermilk);
+  padding: 0 26px;
+  gap: 10px;
+  grid-auto-flow: column;
+}
+
+.tack--wide::after {
+  inset: 8px;
+  border-radius: 26px;
+}
+
+/* ---------- layout ---------- */
+
+.dock {
+  position: absolute;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 22px;
+  align-items: center;
+}
+
+.dock-item {
+  opacity: 0;
+  transform: translateY(14px) scale(0.9);
+  transition: opacity 180ms ease, transform 180ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  pointer-events: none;
+}
+
+.dock-item.show {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.stable {
+  position: absolute;
+  top: calc(18px + env(safe-area-inset-top));
+  left: calc(18px + env(safe-area-inset-left));
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(255, 243, 208, 0.92);
+  border-radius: 999px;
+  padding: 10px 18px 10px 14px;
+  box-shadow: 0 4px 0 rgba(169, 102, 60, 0.5), 0 8px 20px rgba(59, 42, 32, 0.2);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.stable-names {
+  font-size: 16px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+/* ---------- overlays ---------- */
+
+.sheet {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(59, 42, 32, 0.42);
+  backdrop-filter: blur(3px);
+  animation: fade 220ms ease both;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.card {
+  background: var(--buttermilk);
+  border-radius: 34px;
+  padding: 30px 34px 34px;
+  max-width: min(760px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 0 var(--leather), 0 26px 60px rgba(59, 42, 32, 0.4);
+  text-align: center;
+  animation: rise 300ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(28px) scale(0.96);
+    opacity: 0;
+  }
+}
+
+.card h1 {
+  margin: 0 0 4px;
+  font-size: 40px;
+  letter-spacing: -0.5px;
+}
+
+.card h2 {
+  margin: 0 0 18px;
+  font-size: 27px;
+}
+
+.card p {
+  margin: 0 0 22px;
+  font-size: 19px;
+  opacity: 0.75;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.pick {
+  border: none;
+  background: #fff;
+  border-radius: 22px;
+  padding: 14px 8px 11px;
+  font-size: 40px;
+  line-height: 1;
+  box-shadow: 0 4px 0 rgba(169, 102, 60, 0.35);
+  transition: transform 90ms ease;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+
+.pick span {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--bark);
+}
+
+.pick:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 rgba(169, 102, 60, 0.35);
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.swatch {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  box-shadow: 0 4px 0 rgba(169, 102, 60, 0.35);
+  transition: transform 90ms ease;
+}
+
+.swatch[aria-pressed="true"] {
+  border-color: var(--raspberry);
+  transform: scale(1.1);
+}
+
+/* ---------- start screen ---------- */
+
+.start {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(#a9d3ee 0%, #cfe9f6 46%, var(--meadow) 46%,
+      #5f9e52 100%);
+  text-align: center;
+}
+
+.start-inner {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  transform: translateY(-6vh);
+}
+
+.start h1 {
+  font-size: clamp(46px, 9vw, 92px);
+  margin: 0;
+  color: var(--buttermilk);
+  letter-spacing: -2px;
+  text-shadow: 0 6px 0 var(--leather-dark), 0 14px 28px rgba(59, 42, 32, 0.35);
+}
+
+.start p {
+  font-size: 21px;
+  font-weight: 700;
+  color: #ffffff;
+  opacity: 0.9;
+  margin: 0 0 26px;
+  text-shadow: 0 2px 6px rgba(59, 42, 32, 0.4);
+}
+
+.hint {
+  font-size: 17px;
+  font-weight: 700;
+  opacity: 0.7;
+  margin-top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
