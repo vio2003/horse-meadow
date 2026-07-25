@@ -1,0 +1,11 @@
+Quaternius 'Adventurer' from the Ultimate Modular Women Pack.
+Source: https://poly.pizza/m/ZwF0K7WBmu
+Licence: CC0 1.0 Universal (public domain). No attribution required.
+
+Modified from the original: the pack ships 24 animation clips and this game
+plays three, so Death, Gun_Shoot, Sword_Slash, Punch, Kick, Roll and the rest
+were stripped and the file repacked, leaving Idle/Walk/Run. That is ~40% of the
+bytes, and every byte here is precached to the iPad for offline play.
+Geometry, materials and the 62-bone rig are untouched.
+
+Kept here as a courtesy record of where it came from.

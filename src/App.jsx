@@ -32,7 +32,11 @@ function Scene() {
       <Meadow />
       <Castle />
       <Stable />
-      <Player />
+      {/* She loads a model too now, so she suspends like the horses do. Her own
+          boundary keeps her download from holding up theirs, and vice versa. */}
+      <Suspense fallback={null}>
+        <Player />
+      </Suspense>
       {/* The horses load a model, so they suspend. Their own boundary means the
           meadow, castle and stable draw immediately instead of the whole world
           waiting on a 1.1MB download. */}

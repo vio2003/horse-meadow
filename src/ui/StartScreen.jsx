@@ -1,4 +1,5 @@
 import { useGame } from '../store'
+import CharacterPicker from './CharacterPicker'
 import { unlockAudio, whinny } from '../audio'
 
 /**
@@ -30,6 +31,7 @@ export default function StartScreen() {
             ? `${tamed} ${tamed === 1 ? 'horse is' : 'horses are'} waiting for you`
             : 'Walk slowly. Horses are shy.'}
         </p>
+        <CharacterPicker />
         <button className="tack tack--wide">
           <span aria-hidden>▶</span>
           Tap to play

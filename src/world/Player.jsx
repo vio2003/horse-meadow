@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { world, clampToWorld, lerpAngle, damp } from './shared'
 import { STABLE_ZONE, inRect } from './buildings'
 import { SADDLE_Y } from './HorseModel'
+import PlayerModel from './PlayerModel'
 import { useGame } from '../store'
 import { hoofstep } from '../audio'
 
@@ -18,6 +19,9 @@ export default function Player() {
   const scratch = useMemo(() => new THREE.Vector3(), [])
   const lastPos = useMemo(() => new THREE.Vector3(), [])
   const st = useRef({ stepClock: 0, walkPhase: 0, stalled: 0 })
+  const character = useGame((s) => s.character)
+  // Read by PlayerModel every frame to pick a clip and pose her for riding.
+  const anim = useRef({ speed: 0, mounted: false })
 
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05)
@@ -54,21 +58,27 @@ export default function Player() {
         world.playerPos.copy(hp)
         // Seat position is in the horse's local space, then rotated with it,
         // so she stays on the saddle through turns instead of sliding off.
-        const back = -0.15
+        // Essentially over the horse's origin. Further forward puts her on the
+        // neck; further back puts her on the rump. The cone could sit anywhere
+        // along here and nobody could tell — a rider with legs cannot.
+        const seatForward = 0.02
         group.current.position.set(
-          hp.x + Math.sin(hy) * back,
+          hp.x + Math.sin(hy) * seatForward,
           SADDLE_Y,
-          hp.z + Math.cos(hy) * back
+          hp.z + Math.cos(hy) * seatForward
         )
         group.current.rotation.y = hy
       }
       world.playerRunning = false
       bodyRef.current.position.y = Math.sin(performance.now() * 0.008) * 0.02
+      anim.current.speed = 0
+      anim.current.mounted = true
       // Nearest-horse bookkeeping is irrelevant while mounted — but the stable
       // check is not. Riding in is exactly when she needs that button.
       g.setNearStable(inRect(world.playerPos.x, world.playerPos.z, STABLE_ZONE))
       return
     }
+    anim.current.mounted = false
 
     let speed = 0
     if (world.moveTarget) {
@@ -95,9 +105,10 @@ export default function Player() {
 
     group.current.position.set(world.playerPos.x, 0, world.playerPos.z)
 
-    // Bob and footsteps
-    s.walkPhase += dt * speed * 3.4
-    bodyRef.current.position.y = Math.abs(Math.sin(s.walkPhase)) * 0.055
+    // The Walk and Run clips carry her own bob now, so the hand-rolled sine is
+    // gone. Footsteps stay — they're paced to ground speed, not to the clip.
+    anim.current.speed = speed
+    bodyRef.current.position.y = 0
     if (speed > 0.3) {
       s.stepClock -= dt * speed
       if (s.stepClock <= 0) {
@@ -124,47 +135,7 @@ export default function Player() {
   return (
     <group ref={group}>
       <group ref={bodyRef}>
-        {/* dress */}
-        <mesh position={[0, 0.42, 0]} castShadow>
-          <coneGeometry args={[0.31, 0.66, 9]} />
-          <meshStandardMaterial color="#E4557A" flatShading roughness={0.8} />
-        </mesh>
-        {/* arms */}
-        {[-0.22, 0.22].map((x) => (
-          <mesh key={x} position={[x, 0.62, 0.03]} rotation={[0, 0, x * 1.1]} castShadow>
-            <capsuleGeometry args={[0.055, 0.22, 3, 6]} />
-            <meshStandardMaterial color="#F0C39C" flatShading roughness={0.9} />
-          </mesh>
-        ))}
-        {/* head */}
-        <mesh position={[0, 0.93, 0]} castShadow>
-          <sphereGeometry args={[0.18, 10, 8]} />
-          <meshStandardMaterial color="#F0C39C" flatShading roughness={0.9} />
-        </mesh>
-        {/* hair */}
-        <mesh position={[0, 0.98, -0.02]} scale={[1.06, 1, 1.06]} castShadow>
-          <sphereGeometry args={[0.185, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
-          <meshStandardMaterial color="#6B4326" flatShading roughness={0.85} />
-        </mesh>
-        {/* ponytail */}
-        <mesh position={[0, 0.86, -0.2]} rotation={[0.5, 0, 0]} castShadow>
-          <capsuleGeometry args={[0.07, 0.24, 3, 6]} />
-          <meshStandardMaterial color="#6B4326" flatShading roughness={0.85} />
-        </mesh>
-        {/* eyes */}
-        {[-0.07, 0.07].map((x) => (
-          <mesh key={x} position={[x, 0.94, 0.16]}>
-            <sphereGeometry args={[0.028, 8, 6]} />
-            <meshStandardMaterial color="#2B1F1A" roughness={0.3} />
-          </mesh>
-        ))}
-        {/* boots */}
-        {[-0.1, 0.1].map((x) => (
-          <mesh key={x} position={[x, 0.06, 0.02]} castShadow>
-            <boxGeometry args={[0.11, 0.12, 0.18]} />
-            <meshStandardMaterial color="#6E4326" flatShading roughness={0.9} />
-          </mesh>
-        ))}
+        <PlayerModel character={character} anim={anim} />
       </group>
     </group>
   )

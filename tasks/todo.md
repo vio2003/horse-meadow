@@ -8,7 +8,8 @@ limit; three.js can go much further. Working up a ladder one rung at a time:
 - [x] ~~A better procedural horse~~ — built, wasn't enough for her, superseded
 - [x] **A real rigged glTF horse** — CC0, shipped. See below.
 - [ ] Textures (grass, stone, wood) — there are currently none
-- [ ] Give the girl the same treatment; she's still a cone next to a real horse
+- [x] **Give the girl the same treatment** — rigged CC0 character, and she picks
+      which one. See below.
 - [ ] ~~Drop `flatShading`; roughness/normal maps~~ — reconsider; same risk as
       the env map, and flat shading is load-bearing for this art style
 - [ ] Post-processing (SSAO, bloom)
@@ -297,3 +298,96 @@ grow-up swell, and the save surviving a reload. Production build is clean.
 - Eight skinned, shadow-casting horses instead of five. 120fps on a laptop, but
   **the iPad is the machine that matters** and hasn't been checked yet. If it
   drags, two foals instead of three is a one-line fix.
+
+---
+
+# A real girl — GitHub issue #3
+
+*"The player model should be more realistic. It should be a human female
+character."* She was a cone — a cone for the dress, capsules for arms, spheres
+for the head — riding a real rigged horse. Now she's a rigged character too,
+and she picks which one on the start screen.
+
+- [x] Three rigged CC0 characters, tap to choose, saved like her horses
+- [x] Idle / Walk / Run driven by her actual ground speed
+- [x] A believable seat on a moving horse
+
+**What "realistic" was taken to mean.** The horse's treatment, not photorealism.
+Quaternius again, so she and the horse come from the same hand. This file already
+records an env map being tried and reverted for fighting the art style; a
+photoreal girl next to a low-poly horse and a pink castle would be that mistake
+with more polygons. The cone was what read as wrong, not the shading.
+
+**Five things worth knowing.**
+
+1. **Half that pack is CC-BY, not CC0.** quaternius.com states CC0 for the pack
+   but poly.pizza lists per-model licences and five of the ten — Witch, Soldier,
+   Sci-Fi, Suit, Worker — are CC-BY. They're excluded, on the same standard as
+   the horse. Provenance for what shipped is in `public/*.LICENSE.txt`.
+2. **The CC0 characters are grown women, and she is six.** They model at ~1.8
+   units, taller than the horse's withers. Scaling alone gives a shrunken adult,
+   because children are shorter *and* proportionally bigger-headed — so the model
+   comes down to `CHILD_HEIGHT` and the `Head` bone is scaled back up. Cheap, and
+   completely convincing at the distance the chase camera sits. (Two of the five
+   CC0 ones — a hooded figure holding a dagger, and a punk — weren't shipped.)
+3. **There is no sitting animation.** 24 clips, including Death, Gun_Shoot and
+   Sword_Slash, and not one of them is sitting, in a game about riding horses.
+   So riding poses the leg bones directly. Both that and the head scale are
+   applied *after* `mixer.update()`, or the clip overwrites them every frame.
+
+   **And the bone names are not the names in the file.** `GLTFLoader` runs every
+   node through `PropertyBinding.sanitizeNodeName`, because a dot is the
+   property separator in an animation track path — so the rig's `UpperLeg.L` is
+   `UpperLeg_L` by the time it reaches the scene graph. Looking it up by the
+   name in the .glb finds nothing, *silently*: no error, no warning, she just
+   rides standing bolt upright with her legs in the Idle pose. It cost a round
+   of tuning numbers against a pose that was never being applied. `Hips` and
+   `Head` have no dots, which is why the seat height worked and hid it.
+
+   **And then the rotation went the wrong way.** On this rig a *negative* x
+   swings the thigh forward; positive points her legs out behind her, which is
+   what shipped in the first pass and what she spotted straight away. Forward
+   and backward are genuinely hard to tell apart on a small figure at the chase
+   camera's distance, and I called it wrong off a screenshot. The way to settle
+   it is to ride due east so the horse's head is unambiguously on the right of
+   frame, and read the leg against that — not to squint at the pose itself.
+4. **`SADDLE_Y` was tuned against a thing with no legs.** Putting the cone's base
+   on the saddle looked right. Do that to a model with legs and she perches on
+   the horse's shoulders with her feet on its neck. She's dropped by her own hip
+   height — measured off the `Hips` bone, not guessed — *plus* a further
+   `SEAT_DROP`, because a cone could sit anywhere in a fairly wide band and look
+   fine, so `SADDLE_Y` itself sits a clear hand's breadth too high for a real
+   rider's hips. That extra drop is the one number to nudge if she ever looks
+   like she's hovering or sunk. Her seat is only ever right *on average*: the
+   horse's back rises and falls through its gait, which also means single
+   screenshots at different moments are not comparable, and I burned a couple of
+   iterations before noticing that.
+5. **She suspends now, so she needed her own Suspense boundary.** Without it her
+   download holds up the horses' and vice versa.
+
+**Size, which is a real cost.** Precache went from 2120 KiB to 4758 KiB. It would
+have been ~6.5MB: the pack ships 24 clips and this game plays three, and that
+dead weight was ~40% of every file. `tools/strip-glb.mjs` drops the unplayed
+clips, garbage-collects the orphaned accessors and bufferViews, repacks the
+binary chunk and remaps the indices — 4.4MB of raw model down to 2.6MB, with
+geometry, materials and the 62-bone rig provably untouched. That script is also
+the only record of how the committed .glb files were made; a derived binary
+nobody can regenerate is a trap.
+
+**Verification.** `npm test` covers what the headless suite honestly can — the
+default character, that choosing persists and survives a reload, that it doesn't
+clobber her horses in the shared save, and that a character id which no longer
+exists falls back to the first rather than rendering nothing. The rest is a
+browser job and was done there: all three in the picker and in the meadow,
+standing, walking, running and sitting on a moving horse seen side-on; tapping a
+girl selects her without starting the game; console clean; production build
+clean.
+
+**Known limits, deliberately.**
+
+- The picker is a second WebGL context on the start screen. It unmounts the
+  moment she taps play, and it's the only way she can see the girl she's picking
+  rather than an emoji standing in for her. If it costs too much on the iPad,
+  pre-rendered thumbnails are the fallback.
+- **Still unverified on the iPad**, which is now carrying eight skinned horses
+  and a skinned girl. That check has been outstanding since the foals.

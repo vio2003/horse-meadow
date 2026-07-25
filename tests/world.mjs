@@ -46,7 +46,7 @@ const server = await boot()
 const THREE = await server.ssrLoadModule('three')
 const { clampToWorld, MEADOW_RADIUS } = await server.ssrLoadModule('/src/world/shared.js')
 const B = await server.ssrLoadModule('/src/world/buildings.js')
-const { useGame, foalSpawn, canRide, FOAL_GROW_MS } =
+const { useGame, foalSpawn, canRide, FOAL_GROW_MS, CHARACTERS, characterOr } =
   await server.ssrLoadModule('/src/store.js')
 
 const inside = (x, z, pad = 0) =>
@@ -298,6 +298,47 @@ ok('and is not rushed by the reload — four minutes in, still a foal', t('f2').
 tomorrow.getState().growUp(now + 4 * 60 * 1000 + 1000)
 ok('it finishes on its original clock, not one restarted at load', !t('f2').foal)
 
+console.log('\n--- which girl she plays as ---')
+
+ok('there are three to choose between', CHARACTERS.length === 3,
+  CHARACTERS.map((c) => c.id).join(','))
+ok('every one has a label and a model file',
+  CHARACTERS.every((c) => c.id && c.label && /\.glb$/.test(c.file)))
+ok('an unknown id falls back to the first rather than to nothing',
+  characterOr('nonesuch').id === CHARACTERS[0].id)
+ok('and so does a missing one', characterOr(undefined).id === CHARACTERS[0].id)
+
+store.clear()
+const server6 = await boot()
+const { useGame: picked } = await server6.ssrLoadModule('/src/store.js')
+ok('she starts as the first character', picked.getState().character === CHARACTERS[0].id)
+
+picked.getState().chooseCharacter(CHARACTERS[2].id)
+ok('choosing another switches her', picked.getState().character === CHARACTERS[2].id)
+ok('and writes it to the save',
+  JSON.parse(store.get('horse-meadow-save-v1')).character === CHARACTERS[2].id)
+
+// Choosing must not disturb her horses — it shares a save with them.
+picked.getState().tame('h1')
+picked.getState().nameHorse('h1', 'Star')
+picked.getState().chooseCharacter(CHARACTERS[1].id)
+const kept = JSON.parse(store.get('horse-meadow-save-v1'))
+ok('and does not lose the horses she has already tamed',
+  kept.tamed.h1?.name === 'Star' && kept.character === CHARACTERS[1].id)
+
+const server7 = await boot()
+const { useGame: nextDay } = await server7.ssrLoadModule('/src/store.js')
+ok('she is still the girl she picked when she opens it tomorrow',
+  nextDay.getState().character === CHARACTERS[1].id)
+ok('and her horse is still tamed', nextDay.getState().horses.find((h) => h.id === 'h1')?.tamed)
+
+// A save naming a character that no longer exists must still boot.
+store.set('horse-meadow-save-v1', JSON.stringify({ tamed: {}, character: 'wizard' }))
+const server8 = await boot()
+const { useGame: gone } = await server8.ssrLoadModule('/src/store.js')
+ok('a character that no longer exists falls back to the first',
+  gone.getState().character === CHARACTERS[0].id, `${gone.getState().character}`)
+
 console.log('\n--- geometry sanity ---')
 const clear = B.CASTLE.gateTowerX - B.CASTLE.gateTowerR - 1.0
 ok('gate clears a padded horse', clear > 1.5, `clear half-width ${clear.toFixed(2)}`)
@@ -307,6 +348,9 @@ await server2.close()
 await server3.close()
 await server4.close()
 await server5.close()
+await server6.close()
+await server7.close()
+await server8.close()
 console.log(`\n${fails === 0 ? 'ALL PASS' : fails + ' FAILURES'}`)
 // exitCode rather than exit(): let the Vite/esbuild teardown finish, or it
 // prints "The build was canceled" over the top of the results.

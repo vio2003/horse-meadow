@@ -41,6 +41,29 @@ export const NAME_CARDS = [
   { icon: '⚡', name: 'Bolt' },
 ]
 
+/**
+ * Who she plays as. She picks on the start screen and the choice is saved.
+ *
+ * All three are Quaternius CC0 characters off one shared 62-bone rig, so a
+ * single loader and a single clip set serve all of them. They're modelled as
+ * grown women — see PlayerModel for how they're brought down to child height,
+ * because the girl in the meadow is meant to be *her*.
+ *
+ * `recolor` overrides a material by name. The dress is pinked to match the
+ * girl she's had until now; the other two keep the colours they shipped with,
+ * which is what makes the three easy to tell apart at a glance.
+ */
+export const CHARACTERS = [
+  { id: 'dress', label: 'Dress', file: 'girl-dress.glb', recolor: { LimeGreen: '#E4557A' } },
+  { id: 'jeans', label: 'Jeans', file: 'girl-jeans.glb' },
+  { id: 'rider', label: 'Rider', file: 'girl-rider.glb' },
+]
+
+/** An id from a hand-edited or newer save must never render nothing. */
+export function characterOr(id) {
+  return CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0]
+}
+
 /** Spawns are kept clear of the castle courtyard and the stable. */
 const HORSE_SPAWNS = [
   { id: 'h1', pos: [-14, 0, 6], coat: 3 },
@@ -123,7 +146,7 @@ function loadSave() {
   }
 }
 
-function persist(horses) {
+function persist(horses, character) {
   try {
     const tamed = {}
     for (const h of horses) {
@@ -137,7 +160,7 @@ function persist(horses) {
         }
       }
     }
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ tamed }))
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ tamed, character }))
   } catch {
     // Private browsing or a full disk. Not worth interrupting play over.
   }
@@ -181,8 +204,17 @@ export const useGame = create((set, get) => ({
   /** Horse that just got tamed and is waiting to be named. */
   namingHorse: null,
   mounted: null,
+  /** Which of CHARACTERS she plays as. */
+  character: characterOr(loadSave().character).id,
 
   start: () => set({ started: true }),
+
+  chooseCharacter: (id) => {
+    const character = characterOr(id).id
+    if (character === get().character) return
+    persist(get().horses, character)
+    set({ character })
+  },
 
   setNear: (id) => {
     if (get().nearHorse !== id) set({ nearHorse: id })
@@ -197,7 +229,7 @@ export const useGame = create((set, get) => ({
       // The growing-up clock starts here, and only here.
       h.id === id ? { ...h, tamed: true, tamedAt: h.tamedAt ?? Date.now() } : h
     )
-    persist(horses)
+    persist(horses, get().character)
     set({ horses, namingHorse: id })
   },
 
@@ -213,20 +245,20 @@ export const useGame = create((set, get) => ({
       .map((h) => h.id)
     if (grown.length === 0) return grown
     const horses = get().horses.map((h) => (grown.includes(h.id) ? { ...h, foal: false } : h))
-    persist(horses)
+    persist(horses, get().character)
     set({ horses })
     return grown
   },
 
   nameHorse: (id, name) => {
     const horses = get().horses.map((h) => (h.id === id ? { ...h, name } : h))
-    persist(horses)
+    persist(horses, get().character)
     set({ horses })
   },
 
   recolor: (id, coat) => {
     const horses = get().horses.map((h) => (h.id === id ? { ...h, coat } : h))
-    persist(horses)
+    persist(horses, get().character)
     set({ horses })
   },
 
@@ -242,14 +274,14 @@ export const useGame = create((set, get) => ({
     while (taken.has(slot)) slot++
     if (slot >= STALL_COUNT) return
     const horses = get().horses.map((h) => (h.id === id ? { ...h, stall: slot } : h))
-    persist(horses)
+    persist(horses, get().character)
     set({ horses, mounted: null })
   },
 
   /** Tapping a stabled horse opens its stall — it walks back out to her. */
   unstable: (id) => {
     const horses = get().horses.map((h) => (h.id === id ? { ...h, stall: null } : h))
-    persist(horses)
+    persist(horses, get().character)
     set({ horses })
   },
 }))
