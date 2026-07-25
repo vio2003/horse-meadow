@@ -1,7 +1,8 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGame } from './store'
+import { sparkle, whinny } from './audio'
 import Meadow from './world/Meadow'
 import Castle from './world/Castle'
 import Stable from './world/Stable'
@@ -44,6 +45,7 @@ function Scene() {
             coatIndex={h.coat}
             tamed={h.tamed}
             name={h.name}
+            foal={h.foal}
           />
         ))}
       </Suspense>
@@ -51,8 +53,28 @@ function Scene() {
   )
 }
 
+/**
+ * The only thing in the game that happens on its own. One timer for the whole
+ * meadow rather than a clock inside every horse; two seconds is plenty of
+ * resolution for a five-minute wait, and it costs nothing when nothing is
+ * growing — growUp() returns an empty list and leaves the store alone.
+ */
+function useGrowingUp() {
+  const growUp = useGame((s) => s.growUp)
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (growUp().length > 0) {
+        sparkle()
+        whinny()
+      }
+    }, 2000)
+    return () => clearInterval(t)
+  }, [growUp])
+}
+
 export default function App() {
   const started = useGame((s) => s.started)
+  useGrowingUp()
 
   return (
     <>

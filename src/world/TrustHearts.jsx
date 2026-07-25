@@ -51,7 +51,13 @@ const EMPTY = new THREE.MeshStandardMaterial({
   roughness: 0.9,
 })
 
-const TrustHearts = forwardRef(function TrustHearts(_, ref) {
+/**
+ * `y` is how high the meter floats. It's a prop rather than a constant because
+ * a foal is a good deal shorter than a grown horse, and a meter hanging in the
+ * air above one isn't obviously *its* meter. The hearts themselves stay full
+ * size — she has to be able to read them.
+ */
+const TrustHearts = forwardRef(function TrustHearts({ y = 3.0 }, ref) {
   const group = useRef()
   const hearts = useRef([])
   const state = useRef({ trust: 0, show: false, opacity: 0 })
@@ -104,7 +110,7 @@ const TrustHearts = forwardRef(function TrustHearts(_, ref) {
   })
 
   return (
-    <group ref={group} position={[0, 3.0, 0]}>
+    <group ref={group} position={[0, y, 0]}>
       {slots.map((slot, i) => (
         <mesh
           key={i}

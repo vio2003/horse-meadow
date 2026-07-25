@@ -5,12 +5,19 @@ import HorseModel from './HorseModel'
 import TrustHearts from './TrustHearts'
 import { world, clampToWorld, lerpAngle, damp } from './shared'
 import { STALLS, STALL_APPROACH_Z } from './buildings'
-import { useGame, COATS } from '../store'
+import { useGame, COATS, FOAL_SCALE, canRide } from '../store'
 import { whinny, nicker, munch, hoofstep, sparkle } from '../audio'
 
 const WALK = 1.3
 const FLEE = 6.4
 const RIDE = 5.2
+
+/**
+ * What makes a foal a foal, beyond being small. It keeps much closer once it's
+ * hers, doesn't roam as far while it's wild, and squeaks rather than rumbles.
+ */
+const FOAL = { follow: 5, wander: { min: 3, span: 5 }, pitch: 1.9, heartsY: 2.2 }
+const ADULT = { follow: 9, wander: { min: 4, span: 9 }, pitch: 1, heartsY: 3.0 }
 
 // Tuning for the taming loop. All of it is forgiving on purpose.
 const NOTICE_RANGE = 4.0 // close enough to start earning trust
@@ -18,7 +25,7 @@ const BRUSH_RANGE = 2.6
 const SPOOK_RANGE = 13.0
 const TRUST_FLOOR = 0.12 // trust never falls back to zero — no wiped progress
 
-export default function Horse({ id, spawn, coatIndex, tamed, name }) {
+export default function Horse({ id, spawn, coatIndex, tamed, name, foal }) {
   const group = useRef()
   const heartsRef = useRef()
   const pos = useMemo(() => new THREE.Vector3(...spawn), [spawn])
@@ -52,6 +59,9 @@ export default function Horse({ id, spawn, coatIndex, tamed, name }) {
     const me = gameState.horses.find((h) => h.id === id)
     const isTamed = me?.tamed
     const stall = me?.stall ?? null
+    // Read per frame, not from the prop, so a foal growing up mid-play changes
+    // how it behaves on the very next frame.
+    const kind = me?.foal ? FOAL : ADULT
 
     const dist = pos.distanceTo(world.playerPos)
     let speed = 0
@@ -104,13 +114,13 @@ export default function Horse({ id, spawn, coatIndex, tamed, name }) {
         a.graze += (0.85 - a.graze) * damp(dt, 1.2)
       }
       if (dist < 7 && s.nickerCooldown <= 0) {
-        nicker()
+        nicker(kind.pitch)
         s.nickerCooldown = 10 + Math.random() * 8
       }
     } else if (isTamed) {
       // ---- tamed but not ridden: hangs around, drifts toward the player
       a.graze += (0.7 - a.graze) * damp(dt, 1.2)
-      if (dist > 9) {
+      if (dist > kind.follow) {
         scratch.copy(world.playerPos).sub(pos)
         scratch.y = 0
         scratch.normalize()
@@ -124,7 +134,7 @@ export default function Horse({ id, spawn, coatIndex, tamed, name }) {
         )
       }
       if (dist < 5 && s.nickerCooldown <= 0) {
-        nicker()
+        nicker(kind.pitch)
         s.nickerCooldown = 9 + Math.random() * 8
       }
     } else {
@@ -178,7 +188,7 @@ export default function Horse({ id, spawn, coatIndex, tamed, name }) {
             s.mode = 'wander'
             s.timer = 2 + Math.random() * 3
             const ang = Math.random() * Math.PI * 2
-            const r = 4 + Math.random() * 9
+            const r = kind.wander.min + Math.random() * kind.wander.span
             target.set(
               pos.x + Math.cos(ang) * r,
               0,
@@ -235,7 +245,7 @@ export default function Horse({ id, spawn, coatIndex, tamed, name }) {
 
       if (s.trust >= 1) {
         sparkle()
-        nicker()
+        nicker(kind.pitch)
         gameState.tame(id)
       }
     }
@@ -269,6 +279,12 @@ export default function Horse({ id, spawn, coatIndex, tamed, name }) {
         const g = useGame.getState()
         const h = g.horses.find((x) => x.id === id)
         if (!h?.tamed || g.mounted) return
+        if (h.foal) {
+          // A foal is too small to ride, but tapping it must still *do*
+          // something — a button that goes quiet reads as broken.
+          if (pos.distanceTo(world.playerPos) < 5) nicker(FOAL.pitch)
+          return
+        }
         if (h.stall !== null) {
           // Tapping a stabled horse opens its stall from anywhere in the yard —
           // she shouldn't have to walk to it to get her own horse back.
@@ -276,14 +292,19 @@ export default function Horse({ id, spawn, coatIndex, tamed, name }) {
           nicker()
           return
         }
-        if (pos.distanceTo(world.playerPos) < 5) {
+        if (canRide(h) && pos.distanceTo(world.playerPos) < 5) {
           g.mount(id)
           nicker()
         }
       }}
     >
-      <HorseModel coat={palette.coat} mane={palette.mane} anim={anim} />
-      <TrustHearts ref={heartsRef} />
+      <HorseModel
+        coat={palette.coat}
+        mane={palette.mane}
+        anim={anim}
+        scale={foal ? FOAL_SCALE : 1}
+      />
+      <TrustHearts ref={heartsRef} y={(foal ? FOAL : ADULT).heartsY} />
     </group>
   )
 }

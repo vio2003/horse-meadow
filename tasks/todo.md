@@ -230,3 +230,70 @@ horse standing in its stall under its ⭐ sign. Production build is clean.
 - The corner towers still bulge slightly into the courtyard corners. Convex from
   every angle she'll approach from, so it slides rather than catches — but it's
   the same class of thing as the gate notch, if a corner ever feels sticky.
+
+---
+
+# Baby horses — GitHub issue #1
+
+Foals. She finds a small horse somewhere in the meadow, earns its trust exactly
+the way she already knows how, names it — and a few minutes later it grows up
+and she can ride it.
+
+- [x] Three foals, in new random spots every session
+- [x] Tame one and it grows into an adult after five minutes
+- [x] An untamed foal never grows
+- [x] Foals can't be ridden; grown horses can
+
+**Two decisions worth writing down.**
+
+*The five minutes is wall clock, and it's saved.* Tame a foal, wander off, come
+back to a horse. Close the app at bedtime and it has grown by morning. The
+alternative — counting only time with the app open — would mean asking a
+six-year-old to stand still and watch a timer, which is the one thing this game
+has never done. `tamedAt` goes in the save; growing up is decided by comparing
+it to now, so the clock isn't restarted by a reload.
+
+*Foals turn up somewhere new each session.* Untamed ones are re-rolled on load
+so that going and looking is rewarded; a tamed one keeps its name and coat
+through the save like any other horse. Positions are rejection-sampled off the
+buildings and then put through `clampToWorld`, the same function that guarantees
+every other position in the game is legal — so however the dice land, a foal
+cannot turn up inside a castle wall.
+
+**Four things that needed care.**
+
+1. **Stride length scales with the horse.** `HorseModel` matches the Walk and
+   Gallop clips to ground speed by dividing by the speed each was authored for.
+   A foal covering the same ground on shorter legs needs *more* strides per
+   metre, not the same number — without the scale in that divisor it skates
+   about the meadow like it's on ice.
+2. **Growing up is eased, not switched.** The model's scale is damped toward its
+   target, so it's a visible swell over about a second rather than a pop between
+   two frames. Worth seeing happen.
+3. **The trust meter is not a fixed height any more.** Sized for an adult, it
+   hung in the air well above a foal and stopped reading as *that foal's* meter.
+   It takes a `y` now. The hearts themselves stay full size — she has to be able
+   to read them.
+4. **Five stalls, and now up to eight rideable horses.** Nothing broke — the
+   stable button already hides itself when the stalls are full and `stableHorse`
+   already no-ops — but the check that every horse gets a stall was written when
+   there were exactly five of them, and is now scoped to the grown ones. There's
+   a test for the sixth horse: it stays with her rather than vanishing.
+
+**Verification.** `npm test` — the foal section checks 500 random spawns all
+land on open ground inside the meadow (one sample proves nothing when the
+positions are random), that an untamed foal is still a foal an hour later, that
+a tamed one is a foal at 4:59 and a horse at 5:01, and a save round-trip where a
+foal tamed ten minutes ago has grown up while the app was closed while one tamed
+a minute ago is still a foal and finishes on its original clock. All pass. Then
+in the browser: a foal and an adult side by side at the same distance, the
+grow-up swell, and the save surviving a reload. Production build is clean.
+
+**Known limits, deliberately.**
+
+- Foals can't be stabled, because stabling starts from riding and you can't ride
+  a foal. That reads as a natural consequence rather than a rule to explain, so
+  it stays until she asks otherwise.
+- Eight skinned, shadow-casting horses instead of five. 120fps on a laptop, but
+  **the iPad is the machine that matters** and hasn't been checked yet. If it
+  drags, two foals instead of three is a one-line fix.

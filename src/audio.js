@@ -55,21 +55,24 @@ export function hoofstep(volume = 0.12) {
   src.stop(ctx.currentTime + 0.14)
 }
 
-/** Low, friendly rumble. The horse likes you. */
-export function nicker() {
+/**
+ * Low, friendly rumble. The horse likes you. Foals pass a `pitch` above 1 —
+ * same rumble, smaller animal.
+ */
+export function nicker(pitch = 1) {
   if (!ctx) return
   const osc = ctx.createOscillator()
   const g = ctx.createGain()
   const lfo = ctx.createOscillator()
   const lfoG = ctx.createGain()
   osc.type = 'sawtooth'
-  osc.frequency.value = 118
+  osc.frequency.value = 118 * pitch
   lfo.frequency.value = 22
   lfoG.gain.value = 30
   lfo.connect(lfoG).connect(osc.frequency)
   const filt = ctx.createBiquadFilter()
   filt.type = 'lowpass'
-  filt.frequency.value = 700
+  filt.frequency.value = 700 * pitch
   osc.connect(filt).connect(g).connect(ctx.destination)
   env(g, { attack: 0.03, decay: 0.45, peak: 0.16 })
   osc.start()

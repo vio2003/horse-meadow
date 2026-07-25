@@ -46,7 +46,8 @@ const server = await boot()
 const THREE = await server.ssrLoadModule('three')
 const { clampToWorld, MEADOW_RADIUS } = await server.ssrLoadModule('/src/world/shared.js')
 const B = await server.ssrLoadModule('/src/world/buildings.js')
-const { useGame } = await server.ssrLoadModule('/src/store.js')
+const { useGame, foalSpawn, canRide, FOAL_GROW_MS } =
+  await server.ssrLoadModule('/src/store.js')
 
 const inside = (x, z, pad = 0) =>
   B.BLOCKERS.some((b) => {
@@ -179,16 +180,22 @@ ok('open meadow does not', !B.isBuiltOn(20, 20))
 
 console.log('\n--- stabling, and still stabled tomorrow ---')
 const g = () => useGame.getState()
+// Foals can't be ridden, so they can't be stabled either — the stable is
+// entirely a grown-horse affair, and these checks are about the grown ones.
+const grownOnes = () => g().horses.filter((h) => !h.foal)
+ok('the meadow holds five grown horses and three foals',
+  grownOnes().length === 5 && g().horses.filter((h) => h.foal).length === 3,
+  `${g().horses.length} horses`)
 ok('nothing is stabled on a fresh save', g().horses.every((h) => h.stall === null))
-// Tame and stable every horse — five horses, five stalls, no one left out.
-for (const h of g().horses) {
+// Tame and stable every grown horse — five horses, five stalls, no one left out.
+for (const h of grownOnes()) {
   g().tame(h.id)
   g().nameHorse(h.id, 'Star')
   g().mount(h.id)
   g().stableHorse(h.id)
 }
-const stalls = g().horses.map((h) => h.stall)
-ok('all five horses got a stall', stalls.every((s) => s !== null), `stalls ${stalls}`)
+const stalls = grownOnes().map((h) => h.stall)
+ok('all five grown horses got a stall', stalls.every((s) => s !== null), `stalls ${stalls}`)
 ok('no two horses share a stall', new Set(stalls).size === 5)
 ok('stabling hops her down', g().mounted === null)
 
@@ -198,9 +205,22 @@ ok('stalls are written to the save', Object.values(saved.tamed).every((h) => h.s
 // Re-import the module from a second Vite server: this is "she opens it tomorrow".
 const server2 = await boot()
 const { useGame: reloaded } = await server2.ssrLoadModule('/src/store.js')
-const after = reloaded.getState().horses.map((h) => h.stall)
+const reloadedGrown = reloaded.getState().horses.filter((h) => !h.foal)
+const after = reloadedGrown.map((h) => h.stall)
 ok('every horse is still in the same stall after a reload', String(after) === String(stalls), `${after}`)
-ok('and still tamed', reloaded.getState().horses.every((h) => h.tamed))
+ok('and still tamed', reloadedGrown.every((h) => h.tamed))
+
+// Five stalls, and once foals grow up there are more than five horses that
+// could want one. The odd one out must stay with her rather than vanish.
+const spare = g().horses.find((h) => h.foal)
+g().tame(spare.id)
+g().growUp(Date.now() + FOAL_GROW_MS)
+g().mount(spare.id)
+g().stableHorse(spare.id)
+const spareNow = g().horses.find((h) => h.id === spare.id)
+ok('a sixth horse finds no free stall and stays with her',
+  spareNow.stall === null && g().mounted === spare.id, `stall ${spareNow.stall}`)
+g().dismount()
 
 // A corrupt save must not put a horse inside a wall.
 store.set(
@@ -213,6 +233,71 @@ const cs = corrupt.getState().horses.map((h) => h.stall)
 ok('an out-of-range stall is dropped', cs[0] === null, `h1 -> ${cs[0]}`)
 ok('a double-booked stall is dropped for the second horse', cs[1] === 0 && cs[2] === null, `${cs}`)
 
+console.log('\n--- foals ---')
+
+// Where a foal turns up is random, which is exactly why one sample proves
+// nothing. Check five hundred of them.
+const spawnFails = []
+for (let i = 0; i < 500; i++) {
+  const [x, , z] = foalSpawn()
+  if (inside(x, z, 1.0 - 1e-6) || Math.hypot(x, z) > MEADOW_RADIUS + 1e-6) {
+    spawnFails.push(`${x.toFixed(1)},${z.toFixed(1)}`)
+  }
+}
+ok('500 random foal spawns all land on open ground inside the meadow',
+  spawnFails.length === 0, spawnFails.slice(0, 5).join(' | '))
+
+ok('a foal cannot be ridden', !canRide({ tamed: true, foal: true }))
+ok('a grown horse she has tamed can', canRide({ tamed: true, foal: false }))
+ok('a wild horse cannot', !canRide({ tamed: false, foal: false }))
+
+// Growing up, on a store with nothing saved.
+store.clear()
+const server4 = await boot()
+const { useGame: fresh } = await server4.ssrLoadModule('/src/store.js')
+const f = () => fresh.getState()
+const one = (id) => f().horses.find((h) => h.id === id)
+const foalId = f().horses.find((h) => h.foal).id
+const t0 = Date.now()
+
+f().growUp(t0 + 60 * 60 * 1000)
+ok('an untamed foal never grows up, however long she leaves it',
+  f().horses.filter((h) => h.foal).length === 3)
+
+f().tame(foalId)
+f().nameHorse(foalId, 'Blossom')
+const coatBefore = one(foalId).coat
+f().growUp(t0 + FOAL_GROW_MS - 1000)
+ok('a tamed foal is still a foal a second short of five minutes', one(foalId).foal)
+f().growUp(t0 + FOAL_GROW_MS + 1000)
+ok('and is a grown horse a second past it', !one(foalId).foal)
+ok('so now she can ride it', canRide(one(foalId)))
+ok('it is the same horse she named, in the same colour',
+  one(foalId).name === 'Blossom' && one(foalId).coat === coatBefore)
+
+// She closes the app with a foal part-grown and opens it again tomorrow.
+store.clear()
+const now = Date.now()
+store.set(
+  'horse-meadow-save-v1',
+  JSON.stringify({
+    tamed: {
+      f1: { name: 'Berry', coat: 4, stall: null, foal: true, tamedAt: now - 10 * 60 * 1000 },
+      f2: { name: 'Daisy', coat: 5, stall: null, foal: true, tamedAt: now - 60 * 1000 },
+    },
+  })
+)
+const server5 = await boot()
+const { useGame: tomorrow } = await server5.ssrLoadModule('/src/store.js')
+const t = (id) => tomorrow.getState().horses.find((h) => h.id === id)
+ok('a foal tamed ten minutes ago grew up while the app was closed',
+  !t('f1').foal && t('f1').name === 'Berry')
+ok('one tamed a minute ago is still a foal', t('f2').foal)
+tomorrow.getState().growUp(now + 3 * 60 * 1000)
+ok('and is not rushed by the reload — four minutes in, still a foal', t('f2').foal)
+tomorrow.getState().growUp(now + 4 * 60 * 1000 + 1000)
+ok('it finishes on its original clock, not one restarted at load', !t('f2').foal)
+
 console.log('\n--- geometry sanity ---')
 const clear = B.CASTLE.gateTowerX - B.CASTLE.gateTowerR - 1.0
 ok('gate clears a padded horse', clear > 1.5, `clear half-width ${clear.toFixed(2)}`)
@@ -220,6 +305,8 @@ ok('gate clears a padded horse', clear > 1.5, `clear half-width ${clear.toFixed(
 await server.close()
 await server2.close()
 await server3.close()
+await server4.close()
+await server5.close()
 console.log(`\n${fails === 0 ? 'ALL PASS' : fails + ' FAILURES'}`)
 // exitCode rather than exit(): let the Vite/esbuild teardown finish, or it
 // prints "The build was canceled" over the top of the results.

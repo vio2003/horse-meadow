@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { STALL_COUNT } from './world/buildings'
+import { STALL_COUNT, isBuiltOn } from './world/buildings'
+import { clampToWorld } from './world/shared'
 
 const SAVE_KEY = 'horse-meadow-save-v1'
 
@@ -49,6 +50,69 @@ const HORSE_SPAWNS = [
   { id: 'h5', pos: [30, 0, 24], coat: 8 },
 ]
 
+/**
+ * Foals.
+ *
+ * Five minutes of wall clock from the moment she tames it, saved — so she can
+ * tame a foal, go off and do something else, and come back to a horse. Close
+ * the app at bedtime and it has grown by morning. Standing still watching a
+ * timer is not a thing a six-year-old should be asked to do.
+ *
+ * An untamed foal has no save entry at all, which is exactly why it never
+ * grows up: there is nothing to count from.
+ */
+export const FOAL_GROW_MS = 5 * 60 * 1000
+/** How big a foal is next to a grown horse. */
+export const FOAL_SCALE = 0.62
+const FOAL_IDS = ['f1', 'f2', 'f3']
+
+function isGrown(tamedAt, now = Date.now()) {
+  return typeof tamedAt === 'number' && now - tamedAt >= FOAL_GROW_MS
+}
+
+/** Only grown horses can be ridden. One place decides it, so the click handler
+ *  and the tests can never disagree about it. */
+export function canRide(h) {
+  return !!h && h.tamed && !h.foal
+}
+
+/**
+ * Somewhere out in the meadow nobody told her about. Sampled on a ring wide
+ * enough that a foal is never standing on the spot she starts at, rejecting
+ * anything sitting on a building, and then run through `clampToWorld` — the
+ * same function that guarantees every other position in this game is legal. So
+ * a foal can't turn up inside a castle wall however the dice land.
+ *
+ * `clampToWorld` only ever reads `.x` and `.z`, which is why a plain object
+ * does and this file needs no `three` import.
+ */
+export function foalSpawn() {
+  let x = 18
+  let z = 18
+  for (let i = 0; i < 60; i++) {
+    const ang = Math.random() * Math.PI * 2
+    const r = 14 + Math.random() * 26
+    x = Math.cos(ang) * r
+    z = Math.sin(ang) * r
+    if (!isBuiltOn(x, z)) break
+  }
+  const p = clampToWorld({ x, z }, 1.0)
+  return [p.x, 0, p.z]
+}
+
+/** The adults at their fixed spots, then three foals wherever today's are. */
+function allSpawns() {
+  return [
+    ...HORSE_SPAWNS.map((h) => ({ ...h, foal: false })),
+    ...FOAL_IDS.map((id) => ({
+      id,
+      pos: foalSpawn(),
+      coat: Math.floor(Math.random() * COATS.length),
+      foal: true,
+    })),
+  ]
+}
+
 function loadSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY)
@@ -63,7 +127,15 @@ function persist(horses) {
   try {
     const tamed = {}
     for (const h of horses) {
-      if (h.tamed) tamed[h.id] = { name: h.name, coat: h.coat, stall: h.stall }
+      if (h.tamed) {
+        tamed[h.id] = {
+          name: h.name,
+          coat: h.coat,
+          stall: h.stall,
+          foal: h.foal,
+          tamedAt: h.tamedAt,
+        }
+      }
     }
     localStorage.setItem(SAVE_KEY, JSON.stringify({ tamed }))
   } catch {
@@ -74,11 +146,12 @@ function persist(horses) {
 function initialHorses() {
   const saved = loadSave().tamed || {}
   const claimed = new Set()
-  return HORSE_SPAWNS.map((h) => {
+  return allSpawns().map((h) => {
+    const s = saved[h.id]
     // A stall from an older save could be out of range, or — if the save were
     // ever hand-edited — double-booked. Either way, put the horse in the field
     // rather than in a wall.
-    let stall = saved[h.id]?.stall
+    let stall = s?.stall
     if (typeof stall !== 'number' || stall < 0 || stall >= STALL_COUNT || claimed.has(stall)) {
       stall = null
     } else {
@@ -86,10 +159,14 @@ function initialHorses() {
     }
     return {
       ...h,
-      tamed: !!saved[h.id],
-      name: saved[h.id]?.name ?? null,
-      coat: saved[h.id]?.coat ?? h.coat,
+      tamed: !!s,
+      name: s?.name ?? null,
+      coat: s?.coat ?? h.coat,
       stall,
+      tamedAt: s?.tamedAt ?? null,
+      // The five minutes ran while the app was closed, so a foal she tamed
+      // last night is a horse this morning.
+      foal: s ? !!s.foal && !isGrown(s.tamedAt) : h.foal,
     }
   })
 }
@@ -116,9 +193,29 @@ export const useGame = create((set, get) => ({
   },
 
   tame: (id) => {
-    const horses = get().horses.map((h) => (h.id === id ? { ...h, tamed: true } : h))
+    const horses = get().horses.map((h) =>
+      // The growing-up clock starts here, and only here.
+      h.id === id ? { ...h, tamed: true, tamedAt: h.tamedAt ?? Date.now() } : h
+    )
     persist(horses)
     set({ horses, namingHorse: id })
+  },
+
+  /**
+   * Tamed foals that have done their five minutes become adults. Returns the
+   * ids that just grew, so the caller can make a noise about it, and leaves
+   * state alone entirely when nothing has. Driven by one interval in App.jsx
+   * rather than a clock inside each horse.
+   */
+  growUp: (now = Date.now()) => {
+    const grown = get()
+      .horses.filter((h) => h.foal && h.tamed && isGrown(h.tamedAt, now))
+      .map((h) => h.id)
+    if (grown.length === 0) return grown
+    const horses = get().horses.map((h) => (grown.includes(h.id) ? { ...h, foal: false } : h))
+    persist(horses)
+    set({ horses })
+    return grown
   },
 
   nameHorse: (id, name) => {

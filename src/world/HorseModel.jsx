@@ -3,6 +3,7 @@ import { useFrame, useLoader } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import { damp } from './shared'
 
 /**
  * A real rigged horse: Quaternius' CC0 "White Horse", with its own skeletal
@@ -76,7 +77,12 @@ function clipFor(speed, graze) {
   return 'Idle'
 }
 
-export default function HorseModel({ coat, mane, anim }) {
+/**
+ * `scale` is 1 for a grown horse and FOAL_SCALE for a foal. It is eased toward
+ * its target rather than applied outright, so a foal growing up is a visible
+ * swell over a second or so instead of a pop between frames.
+ */
+export default function HorseModel({ coat, mane, anim, scale = 1 }) {
   const gltf = useLoader(GLTFLoader, MODEL_URL)
 
   // One skeleton, one set of materials and one mixer per horse.
@@ -146,6 +152,8 @@ export default function HorseModel({ coat, mane, anim }) {
   }, [gltf, coat, mane])
 
   const current = useRef(null)
+  const outer = useRef()
+  const shownScale = useRef(scale)
 
   useEffect(() => () => mixer.stopAllAction(), [mixer])
 
@@ -153,6 +161,9 @@ export default function HorseModel({ coat, mane, anim }) {
     const dt = Math.min(dtRaw, 0.05)
     const a = anim.current
     const want = clipFor(a.speed, a.graze)
+
+    const s = (shownScale.current += (scale - shownScale.current) * damp(dt, 2.2))
+    if (outer.current) outer.current.scale.setScalar(s)
 
     if (want !== current.current && actions[want]) {
       const prev = current.current && actions[current.current]
@@ -162,22 +173,27 @@ export default function HorseModel({ coat, mane, anim }) {
     }
 
     // Match the stride to the ground speed so the hooves don't skate. The
-    // divisors are roughly the speed each clip was authored to look right at.
+    // divisors are roughly the speed each clip was authored to look right at,
+    // scaled by how big the horse is: short legs covering the same ground need
+    // *more* strides per metre, not the same number. Without the `s` a foal
+    // skates about the meadow like it's on ice.
     const action = actions[current.current]
     if (action) {
       action.timeScale =
         current.current === 'Gallop'
-          ? THREE.MathUtils.clamp(a.speed / 6.0, 0.6, 1.6)
+          ? THREE.MathUtils.clamp(a.speed / (6.0 * s), 0.6, 1.6)
           : current.current === 'Walk'
-            ? THREE.MathUtils.clamp(a.speed / 1.6, 0.5, 1.8)
+            ? THREE.MathUtils.clamp(a.speed / (1.6 * s), 0.5, 1.8)
             : 1
     }
 
     mixer.update(dt)
   })
 
+  // The outer group's scale is set on the ref every frame above. Everything
+  // inside it — including how high off the ground the hooves sit — comes along.
   return (
-    <group rotation={[0, MODEL_YAW, 0]}>
+    <group ref={outer} rotation={[0, MODEL_YAW, 0]}>
       <group position={[0, groundY, 0]} scale={FIT_SCALE}>
         <primitive object={root} />
       </group>
