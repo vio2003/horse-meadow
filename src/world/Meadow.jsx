@@ -2,6 +2,7 @@ import { useMemo, useRef, useLayoutEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { world, MEADOW_RADIUS, clampToWorld } from './shared'
+import { MEADOW, WORLD_REACH, edgeMarkers } from './regions'
 import { isBuiltOn } from './buildings'
 import { RUN_DISTANCE } from './Player'
 import { useGame } from '../store'
@@ -15,10 +16,11 @@ function makeRng(seed) {
   }
 }
 
-function Scatter({
+export function Scatter({
   count,
   radius,
   inner = 0,
+  center = [0, 0],
   seed,
   geometry,
   material,
@@ -27,19 +29,20 @@ function Scatter({
   castShadow = false,
 }) {
   const ref = useRef()
+  const [cx, cz] = center
   const items = useMemo(() => {
     const rng = makeRng(seed)
     return Array.from({ length: count }, () => {
       const ang = rng() * Math.PI * 2
       const r = inner + Math.sqrt(rng()) * (radius - inner)
       const sc = scaleRange[0] + rng() * (scaleRange[1] - scaleRange[0])
-      const x = Math.cos(ang) * r
-      const z = Math.sin(ang) * r
+      const x = cx + Math.cos(ang) * r
+      const z = cz + Math.sin(ang) * r
       // Anything that landed under a building gets scaled to nothing rather
       // than dropped, so the instance count (and the seed) stay stable.
       return { x, z, rot: rng() * Math.PI * 2, sc: isBuiltOn(x, z) ? 0 : sc }
     })
-  }, [count, radius, inner, seed, scaleRange])
+  }, [count, radius, inner, cx, cz, seed, scaleRange])
 
   useLayoutEffect(() => {
     const m = new THREE.Matrix4()
@@ -128,15 +131,9 @@ export default function Meadow() {
     }).filter((t) => !isBuiltOn(t.x, t.z))
   }, [])
 
-  const posts = useMemo(
-    () =>
-      // The fence stops where the castle starts — the keep is the boundary there.
-      Array.from({ length: 44 }, (_, i) => {
-        const a = (i / 44) * Math.PI * 2
-        return { x: Math.cos(a) * (MEADOW_RADIUS + 2), z: Math.sin(a) * (MEADOW_RADIUS + 2) }
-      }).filter((p) => !isBuiltOn(p.x, p.z)),
-    []
-  )
+  // The fence stops where the castle starts — the keep is the boundary there —
+  // and, now, wherever the meadow opens onto somewhere else.
+  const posts = useMemo(() => edgeMarkers(MEADOW, 44, 2).filter((p) => !isBuiltOn(p.x, p.z)), [])
 
   return (
     <group>
@@ -163,13 +160,20 @@ export default function Meadow() {
           world.playerRunning = !g.mounted && d > RUN_DISTANCE
         }}
       >
-        <circleGeometry args={[MEADOW_RADIUS + 24, 48]} />
-        <meshStandardMaterial color="#79B364" roughness={1} />
+        <circleGeometry args={[WORLD_REACH + 60, 64]} />
+        <meshStandardMaterial color="#6B9A56" roughness={1} />
+      </mesh>
+
+      {/* The meadow itself, laid over the base. Every region does this — the
+          base is only there to catch taps and to fill the gaps between them. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, MEADOW.y, 0]} raycast={() => null}>
+        <circleGeometry args={[MEADOW_RADIUS, 64]} />
+        <meshStandardMaterial color={MEADOW.ground} roughness={1} />
       </mesh>
 
       {/* A slightly darker inner ring gives the eye something to read as distance */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} raycast={() => null}>
-        <ringGeometry args={[MEADOW_RADIUS + 1.4, MEADOW_RADIUS + 2.4, 64]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, MEADOW.y + 0.001, 0]} raycast={() => null}>
+        <ringGeometry args={[MEADOW_RADIUS - 1.0, MEADOW_RADIUS, 64]} />
         <meshStandardMaterial color="#6AA057" roughness={1} />
       </mesh>
 

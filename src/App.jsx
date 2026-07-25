@@ -4,6 +4,9 @@ import * as THREE from 'three'
 import { useGame } from './store'
 import { sparkle, whinny } from './audio'
 import Meadow from './world/Meadow'
+import Beach from './world/Beach'
+import Town from './world/Town'
+import Snow from './world/Snow'
 import Castle from './world/Castle'
 import Stable from './world/Stable'
 import Sunlight from './world/Sunlight'
@@ -19,7 +22,11 @@ function Scene() {
   return (
     <>
       <color attach="background" args={['#9AC7E8']} />
-      <fog attach="fog" args={['#B9DCF0', 55, 115]} />
+      {/* Sized for the whole world now, not one meadow. Near enough that the
+          far side of a region still softens into the distance — which is what
+          makes the place feel big — and far enough that riding toward the sea
+          doesn't mean riding into a wall of haze. */}
+      <fog attach="fog" args={['#B9DCF0', 90, 260]} />
 
       {/* Hemisphere light does most of the work: sky above, grass bounce below.
           It's one light, it's cheap, and it flatters flat shading. It also fills
@@ -30,6 +37,9 @@ function Scene() {
 
       <FollowCamera />
       <Meadow />
+      <Beach />
+      <Town />
+      <Snow />
       <Castle />
       <Stable />
       {/* She loads a model too now, so she suspends like the horses do. Her own
@@ -90,7 +100,7 @@ export default function App() {
         // storybook look of everything else.
         shadows="soft"
         gl={{ antialias: true, powerPreference: 'high-performance' }}
-        camera={{ fov: 46, near: 0.5, far: 220, position: [0, 11, 18] }}
+        camera={{ fov: 46, near: 0.5, far: 460, position: [0, 11, 18] }}
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping
           gl.toneMappingExposure = 1.05

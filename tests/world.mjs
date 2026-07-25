@@ -44,7 +44,9 @@ const ok = (name, cond, extra = '') => {
 
 const server = await boot()
 const THREE = await server.ssrLoadModule('three')
-const { clampToWorld, MEADOW_RADIUS } = await server.ssrLoadModule('/src/world/shared.js')
+const { clampToWorld, clampToMeadow, MEADOW_RADIUS } =
+  await server.ssrLoadModule('/src/world/shared.js')
+const REG = await server.ssrLoadModule('/src/world/regions.js')
 const B = await server.ssrLoadModule('/src/world/buildings.js')
 const { useGame, foalSpawn, canRide, FOAL_GROW_MS, CHARACTERS, characterOr } =
   await server.ssrLoadModule('/src/store.js')
@@ -56,7 +58,7 @@ const inside = (x, z, pad = 0) =>
   })
 
 /** Replays Player/Horse movement exactly: step toward target, clamp, repeat. */
-function walk(from, to, { speed = 5.4, pad = 0.5, seconds = 40 } = {}) {
+function walk(from, to, { speed = 5.4, pad = 0.5, seconds = 40, clamp = clampToWorld } = {}) {
   const pos = new THREE.Vector3(from[0], 0, from[1])
   const target = new THREE.Vector3(to[0], 0, to[1])
   const d = new THREE.Vector3()
@@ -70,7 +72,7 @@ function walk(from, to, { speed = 5.4, pad = 0.5, seconds = 40 } = {}) {
     if (len < 0.25) return { reached: true, pos, seconds: i * dt }
     d.normalize()
     pos.addScaledVector(d, Math.min(speed * dt, len))
-    clampToWorld(pos, pad)
+    clamp(pos, pad)
     if (pos.distanceTo(prev) < 1e-4) {
       if (++stuckFor > 90) return { reached: false, pos, stuck: true }
     } else stuckFor = 0
@@ -79,6 +81,28 @@ function walk(from, to, { speed = 5.4, pad = 0.5, seconds = 40 } = {}) {
   return { reached: false, pos, timeout: true }
 }
 const at = (r) => `${r.pos.x.toFixed(1)},${r.pos.z.toFixed(1)}${r.stuck ? ' STUCK' : ''}`
+
+/**
+ * Somewhere she is allowed to be: inside some region.
+ *
+ * `slack` is not a fudge. The castle's keep and corner towers sit *on* the
+ * meadow's edge, and being ejected from a wall deliberately takes priority over
+ * the world boundary — better a step outside the world than inside a tower. So
+ * a tap resolving behind the castle lands a fraction proud of the fence, in a
+ * spot the north wall means she can never reach anyway. The failure this check
+ * exists to catch is a tap stranded in the empty *gaps between regions*, and
+ * that would miss by tens of units, not by one.
+ */
+const legal = (x, z, slack = 1.5) =>
+  REG.REGIONS.some((g) => Math.hypot(x - g.x, z - g.z) <= g.r + slack)
+/** The point where two regions' circles cross — the doorway between them. */
+function doorway(a, b) {
+  const d = Math.hypot(b.x - a.x, b.z - a.z)
+  const t = (d * d - b.r * b.r + a.r * a.r) / (2 * d)
+  const ux = (b.x - a.x) / d
+  const uz = (b.z - a.z) / d
+  return { x: a.x + ux * t, z: a.z + uz * t, ux, uz, half: Math.sqrt(a.r * a.r - t * t) }
+}
 
 console.log('--- blockers are sane ---')
 for (const s of [[-14, 6], [22, -6], [17, -16], [-28, 14], [30, 24], [0, 6]]) {
@@ -168,10 +192,146 @@ for (const [name, x, z] of [
   const t = clampToWorld(new THREE.Vector3(x, 0, z), 1.0)
   ok(
     `tap ${name} lands somewhere legal`,
-    !inside(t.x, t.z, 1.0 - 1e-6) && Math.hypot(t.x, t.z) <= MEADOW_RADIUS + 1e-6,
+    !inside(t.x, t.z, 1.0 - 1e-6) && legal(t.x, t.z),
     `-> ${t.x.toFixed(1)},${t.z.toFixed(1)}`
   )
 }
+
+console.log('\n--- the world is bigger than the meadow ---')
+
+const OUTER = REG.REGIONS.filter((g) => g.id !== 'meadow')
+ok('there are four regions', REG.REGIONS.length === 4, REG.REGIONS.map((g) => g.id).join(','))
+
+// Every doorway must be wide enough to ride through without aiming, and must
+// not open onto a building.
+for (const g of OUTER) {
+  const d = doorway(REG.MEADOW, g)
+  ok(`the ${g.id} doorway is wide`, d.half * 2 > 20, `${(d.half * 2).toFixed(0)} units`)
+  ok(`the ${g.id} doorway is not blocked by a building`, !inside(d.x, d.z, 1.0),
+    `at ${d.x.toFixed(0)},${d.z.toFixed(0)}`)
+}
+
+// The whole point of the feature: she can get there, and get home again.
+for (const g of OUTER) {
+  const out = walk([0, 8], [g.x, g.z], { speed: 5.2, pad: 1.0, seconds: 120 })
+  ok(`rides from the meadow to the ${g.id}`, out.reached, at(out))
+  const home = walk([g.x, g.z], [0, 8], { speed: 5.2, pad: 1.0, seconds: 120 })
+  ok(`and rides home from the ${g.id}`, home.reached, at(home))
+}
+
+// A notch where two circles cross is exactly what wedged her at the castle gate.
+// Cross every doorway off-centre, in both directions, and along its face.
+let doorFails = []
+let doorTries = 0
+for (const g of OUTER) {
+  const d = doorway(REG.MEADOW, g)
+  const px = -d.uz
+  const pz = d.ux
+  for (const off of [-14, -9, -4, 0, 4, 9, 14]) {
+    const midX = d.x + px * off
+    const midZ = d.z + pz * off
+    // in from the meadow side, out from the region side, and back again
+    const inner = [midX - d.ux * 26, midZ - d.uz * 26]
+    const outer = [midX + d.ux * 26, midZ + d.uz * 26]
+    // Skip endpoints sitting on a building — including its open interior, which
+    // is why this tests isBuiltOn and not just the blockers. The stable is only
+    // enterable from the front, and walking at its back wall from outside is the
+    // game's documented no-pathfinding behaviour, not a doorway fault.
+    const onBuilding = (p) => inside(p[0], p[1], 1.0) || B.isBuiltOn(p[0], p[1])
+    if (onBuilding(inner) || onBuilding(outer)) continue
+    for (const [from, to, way] of [[inner, outer, 'out'], [outer, inner, 'back']]) {
+      doorTries++
+      const r = walk(from, to, { speed: 5.2, pad: 1.0, seconds: 60 })
+      if (!r.reached) doorFails.push(`${g.id} ${way} @${off} -> ${at(r)}`)
+    }
+  }
+}
+ok(`rides through every doorway, ${doorTries} crossings, without catching on the notch`,
+  doorFails.length === 0, doorFails.slice(0, 6).join(' | '))
+
+// Taps anywhere at all — including the empty gaps between regions, which is
+// where a union-of-circles world can strand her if the clamp is wrong.
+let tapFails = []
+let taps = 0
+for (let x = -130; x <= 140; x += 10) {
+  for (let z = -110; z <= 130; z += 10) {
+    taps++
+    const t = clampToWorld(new THREE.Vector3(x, 0, z), 1.0)
+    if (inside(t.x, t.z, 1.0 - 1e-6) || !legal(t.x, t.z)) {
+      tapFails.push(`${x},${z} -> ${t.x.toFixed(1)},${t.z.toFixed(1)}`)
+    }
+  }
+}
+ok(`all ${taps} taps across the whole world resolve somewhere legal`,
+  tapFails.length === 0, tapFails.slice(0, 6).join(' | '))
+
+console.log('\n--- the mountain turns her aside, it does not swallow her ---')
+
+const MT = B.MOUNTAIN
+ok('the mountain is inside the snow', REG.inRegion(REG.region('snow'), MT.x, MT.z))
+// Straight at it from every side: she must end up outside it, never inside.
+let mtFails = []
+for (let i = 0; i < 12; i++) {
+  const a = (i / 12) * Math.PI * 2
+  const from = [MT.x + Math.cos(a) * (MT.r + 16), MT.z + Math.sin(a) * (MT.r + 16)]
+  if (!legal(from[0], from[1], 0)) continue
+  const r = walk(from, [MT.x, MT.z], { speed: 5.2, pad: 1.0, seconds: 40 })
+  const d = Math.hypot(r.pos.x - MT.x, r.pos.z - MT.z)
+  if (d < MT.r) mtFails.push(`from ${a.toFixed(1)}rad ended ${d.toFixed(1)} from centre`)
+}
+ok('riding at the mountain from any side never gets inside it', mtFails.length === 0,
+  mtFails.join(' | '))
+// And she can get round it — the thing a circle blocker is supposed to give free.
+const around = walk(
+  [MT.x, MT.z - MT.r - 10],
+  [MT.x, MT.z + MT.r + 10],
+  { speed: 5.2, pad: 1.0, seconds: 90 }
+)
+ok('and she can ride around it to the far side', around.reached, at(around))
+
+console.log('\n--- the town is rideable ---')
+
+let houseFails = []
+for (const h of B.HOUSES) {
+  ok(`house at ${h.x},${h.z} is in the town`, REG.inRegion(REG.region('town'), h.x, h.z))
+}
+// Out from the green to each doorstep and back — the route she'd actually take,
+// because riding at the *far* side of a house means the house is in the way and
+// this game has no pathfinding. What must never happen is a house walled off.
+const GREEN = [REG.region('town').x, REG.region('town').z]
+for (const h of B.HOUSES) {
+  const step = [h.x, h.z - h.hd - 3]
+  if (inside(step[0], step[1], 1.0)) {
+    houseFails.push(`doorstep of ${h.x},${h.z} is inside a wall`)
+    continue
+  }
+  const out = walk(GREEN, step, { speed: 5.2, pad: 1.0, seconds: 90 })
+  if (!out.reached) houseFails.push(`green -> ${h.x},${h.z} ${at(out)}`)
+  const back = walk(step, GREEN, { speed: 5.2, pad: 1.0, seconds: 90 })
+  if (!back.reached) houseFails.push(`${h.x},${h.z} -> green ${at(back)}`)
+}
+ok('rides from the green to every doorstep and back', houseFails.length === 0,
+  houseFails.slice(0, 4).join(' | '))
+
+// And in from the meadow, off-centre, without a house standing in the road.
+const intoTown = walk([2, 40], GREEN, { speed: 5.2, pad: 1.0, seconds: 120 })
+ok('rides in from the meadow to the green', intoTown.reached, at(intoTown))
+
+console.log('\n--- the horses stay in the meadow ---')
+
+// A horse fleeing flat out for a minute must still be in the meadow.
+for (const [name, from, to] of [
+  ['toward the beach', [40, 4], [200, 4]],
+  ['toward the town', [4, 40], [4, 200]],
+  ['toward the snow', [-36, -22], [-200, -160]],
+]) {
+  const r = walk(from, to, { speed: 6.4, pad: 1.0, seconds: 60, clamp: clampToMeadow })
+  ok(`a horse bolting ${name} is held at the meadow fence`,
+    Math.hypot(r.pos.x, r.pos.z) <= MEADOW_RADIUS + 1e-6, at(r))
+}
+// She, on the other hand, is not.
+const outRun = walk([40, 4], [200, 4], { speed: 5.2, pad: 1.0, seconds: 60 })
+ok('but she can ride past it', Math.hypot(outRun.pos.x, outRun.pos.z) > MEADOW_RADIUS, at(outRun))
 
 console.log('\n--- scatter is kept off the buildings ---')
 ok('courtyard counts as built on', B.isBuiltOn(0, -35))

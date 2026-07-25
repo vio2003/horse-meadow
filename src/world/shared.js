@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { BLOCKERS } from './buildings'
+import { MEADOW, nearestRegion, inWorld } from './regions'
 
 /**
  * Per-frame game state lives here, NOT in React.
@@ -31,7 +32,7 @@ export const world = {
   insideStable: false,
 }
 
-export const MEADOW_RADIUS = 52
+export const MEADOW_RADIUS = MEADOW.r
 
 /**
  * Push a point out of any wall it has ended up inside.
@@ -72,16 +73,44 @@ export function resolveBlockers(v, pad = 0.6) {
   return v
 }
 
+/** Push a point back onto a circle if it has strayed outside it. */
+function ontoCircle(v, g) {
+  const dx = v.x - g.x
+  const dz = v.z - g.z
+  const d = Math.hypot(dx, dz)
+  if (d > g.r) {
+    // d can't be 0 here: that would mean the centre is outside its own circle.
+    v.x = g.x + (dx / d) * g.r
+    v.z = g.z + (dz / d) * g.r
+  }
+  return v
+}
+
 /**
- * Keep a point inside the meadow and outside the buildings. `pad` is how fat
- * the thing being moved is — the player is slim, a horse needs more room.
+ * Keep a point somewhere in the world and outside the buildings. `pad` is how
+ * fat the thing being moved is — the player is slim, a horse needs more room.
+ *
+ * Inside any region, a point is already legal and nothing moves. Out in the gaps
+ * between them, it goes back to the nearest region's edge — so a tap on the far
+ * hills becomes a walk to the fence rather than a walk into nothing.
+ *
+ * The radius is *not* padded, only the blockers are. That's how this worked when
+ * the world was one disc, and preserving it exactly is what makes an expansion
+ * of the world's shape a safe change rather than a rewrite of every position in
+ * the game.
  */
 export function clampToWorld(v, pad = 0.6) {
-  const d = Math.hypot(v.x, v.z)
-  if (d > MEADOW_RADIUS) {
-    v.x = (v.x / d) * MEADOW_RADIUS
-    v.z = (v.z / d) * MEADOW_RADIUS
-  }
+  if (!inWorld(v.x, v.z)) ontoCircle(v, nearestRegion(v.x, v.z))
+  return resolveBlockers(v, pad)
+}
+
+/**
+ * The same, but the meadow only — for everything that lives there and stays
+ * there. The horses use this; she doesn't. See Horse.jsx for why: she can ride
+ * out to the sea, but she'll find her herd at home where she left it.
+ */
+export function clampToMeadow(v, pad = 0.6) {
+  ontoCircle(v, MEADOW)
   return resolveBlockers(v, pad)
 }
 

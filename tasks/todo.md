@@ -391,3 +391,78 @@ clean.
   pre-rendered thumbnails are the fallback.
 - **Still unverified on the iPad**, which is now carrying eight skinned horses
   and a skinned girl. That check has been outstanding since the foals.
+
+---
+
+# Expanded World — GitHub issue #6
+
+The meadow was one disc of radius 52 and she'd seen all of it. Now there are
+four places and she rides between them: the meadow, a beach with a sea, a town
+of five houses, and a snowy west with a mountain in it.
+
+- [x] The world is a union of overlapping circles, not one circle
+- [x] Beach and ocean, east
+- [x] Town of five houses round a green, south
+- [x] Snow and a solid mountain, west
+- [x] The horses stay home; the one she's riding comes with her
+
+**The whole feature is one function.** `clampToWorld` is the choke point every
+position in this game passes through — player, horses, foal spawns, every tap —
+so the shape of the world *is* the shape of that function. It now clamps to the
+nearest region's edge instead of to one circle, and with a single region that is
+byte-for-byte the old behaviour, which is what made this safe rather than a
+rewrite. `clampToMeadow` is the old one, kept, for everything that lives at home.
+
+**Four things the test suite caught that eyes would not have.**
+
+1. **The snow was unreachable.** Its doorway was clear, but the *ride* to it went
+   straight through the stable — and this game has no pathfinding, so she just
+   stopped at the wall. Approach matters more than the doorway. It sits due west
+   now, on the one westward line that misses the stable entirely.
+2. **Two houses were standing in the road.** The town's doorway is 44 units wide
+   and I'd put a house either side of it, which looks like a village and rides
+   like a gate. The houses gather round the green now and the way in is clear.
+3. **Taps behind the castle resolve a fraction outside the world.** Pre-existing,
+   and correct: the keep and corner towers sit *on* the meadow's edge, and being
+   ejected from a wall deliberately beats the boundary — better a step outside
+   the world than inside a tower. Written down in the test rather than papered
+   over, because the failure that check exists to catch is a tap stranded in the
+   empty gaps between regions, and that misses by tens of units, not by one.
+4. **A doorway sweep aimed inside the stable.** Not a fault — the stable only
+   opens at the front. The sweep skips endpoints on a building's footprint now,
+   not just its blockers.
+
+**Two things the tests could never have caught, found by looking.**
+
+- **Region discs z-fought.** They overlap by design — the overlap *is* the
+  doorway — so two ground discs at the same height shimmered exactly where she
+  walks between places. Each region carries its own `y` now.
+- **The mountain had no snowcap and the beach had no palms.** The cap was a cone
+  drawn *inside* a wider cone, so it was invisible; it has to be wider than the
+  slope at the height it sits at. The palms were cones pointing up, which reads
+  as a fir — the beach had a pine forest on it. The fronds hang down and out now.
+
+**Boundaries are drawn, not just enforced.** Every region has a ring of markers —
+fence posts, surf, hedges, snowdrifts — and `edgeMarkers` drops any that fall
+inside a neighbouring region, because that gap is a doorway and fencing off your
+own doorway is the sort of thing a six-year-old finds in four seconds.
+
+**Verification.** `npm test`: 36 doorway crossings, 700 taps across the whole
+world resolving somewhere legal, rides to and from every region, the mountain
+approached from twelve directions, every doorstep in the town, and horses bolting
+at the meadow fence in three directions. Then ridden in the browser — all four
+places, the beach transition, and the horse positions read out of the live game
+to confirm all eight stay inside the meadow. Production build clean; precache
+2120 -> 4766 KiB (geometry only, no new assets).
+
+**Known limits, deliberately.**
+
+- Still no pathfinding: a building between her and her tap stops her, and now
+  there are more buildings. The stall detector drops the destination so she is
+  never left grinding, and she taps again. A navmesh is the real fix if it ever
+  frustrates her.
+- The gaps *between* regions are grass she can see and can't walk on, marked by
+  fences and drifts. The meadow has always worked that way; there is just more
+  boundary now.
+- **Still unverified on the iPad**, and this adds three regions of scatter to a
+  scene already carrying eight horses and a girl. That check is well overdue.

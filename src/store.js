@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { STALL_COUNT, isBuiltOn } from './world/buildings'
-import { clampToWorld } from './world/shared'
+import { clampToMeadow } from './world/shared'
 
 const SAVE_KEY = 'horse-meadow-save-v1'
 
@@ -102,11 +102,12 @@ export function canRide(h) {
 /**
  * Somewhere out in the meadow nobody told her about. Sampled on a ring wide
  * enough that a foal is never standing on the spot she starts at, rejecting
- * anything sitting on a building, and then run through `clampToWorld` — the
- * same function that guarantees every other position in this game is legal. So
- * a foal can't turn up inside a castle wall however the dice land.
+ * anything sitting on a building, and then run through `clampToMeadow` — the
+ * same function that guarantees every other horse position is legal. So a foal
+ * can't turn up inside a castle wall however the dice land, and it turns up in
+ * the meadow rather than somewhere out in the snow.
  *
- * `clampToWorld` only ever reads `.x` and `.z`, which is why a plain object
+ * `clampToMeadow` only ever reads `.x` and `.z`, which is why a plain object
  * does and this file needs no `three` import.
  */
 export function foalSpawn() {
@@ -119,7 +120,7 @@ export function foalSpawn() {
     z = Math.sin(ang) * r
     if (!isBuiltOn(x, z)) break
   }
-  const p = clampToWorld({ x, z }, 1.0)
+  const p = clampToMeadow({ x, z }, 1.0)
   return [p.x, 0, p.z]
 }
 

@@ -77,6 +77,40 @@ export function inRect(x, z, r) {
   return x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ
 }
 
+// ---------- town ----------
+/**
+ * Five houses around a green, in the town region at (4, 78).
+ *
+ * Solid boxes, unlike the castle and the stable — there is no inside to go to,
+ * so there's no open front to leave. Spread wide enough that a horse can ride
+ * between them without threading a needle; the test suite rides from the green
+ * to every doorstep to prove it.
+ *
+ * They all sit north of z=70 for a reason. The first arrangement put two of
+ * them either side of the road in, which looks like a village and rides like a
+ * gate: the doorway from the meadow is 44 units wide, and standing a house in
+ * it meant riding at the town from an angle simply stopped. The way in is kept
+ * clear now, and the houses gather round the green instead.
+ */
+export const HOUSES = [
+  { x: -19, z: 78, hw: 5.0, hd: 4.2, h: 5.0, wall: '#EFD9BC', roof: PINK_DEEP },
+  { x: 20, z: 76, hw: 4.4, hd: 4.4, h: 4.4, wall: '#E7C9A6', roof: '#8A5A6E' },
+  { x: 24, z: 96, hw: 5.2, hd: 4.0, h: 5.4, wall: '#F0E2CA', roof: GOLD_DEEP },
+  { x: -16, z: 99, hw: 4.6, hd: 4.6, h: 4.8, wall: '#E3D2B6', roof: '#6F8A5E' },
+  { x: 3, z: 106, hw: 6.0, hd: 4.4, h: 6.2, wall: '#EFD9BC', roof: PINK_DEEP },
+]
+
+// ---------- snow ----------
+/**
+ * The mountain, in the snow region at (-80, 14).
+ *
+ * A circle blocker, exactly like the castle's corner towers — she walks around
+ * it, she doesn't climb it. Every position in this game is flat at y=0, and the
+ * player, the horses, the tap-to-move and the shadows all assume it; walkable
+ * terrain height would be a different piece of work entirely.
+ */
+export const MOUNTAIN = { x: -96, z: 6, r: 13, h: 26 }
+
 // ---------- collision ----------
 /**
  * Boxes ({x, z, hw, hd}) and circles ({x, z, r}). There is no physics engine
@@ -109,6 +143,10 @@ export const BLOCKERS = [
   { x: STABLE.x, z: STABLE.backZ, hw: STABLE.hw, hd: STABLE.wallHD },
   { x: STABLE.x - STABLE.hw + 0.6, z: STABLE.z, hw: STABLE.wallHD, hd: STABLE.hd },
   { x: STABLE.x + STABLE.hw - 0.6, z: STABLE.z, hw: STABLE.wallHD, hd: STABLE.hd },
+  // the town's houses are solid all the way round
+  ...HOUSES.map((b) => ({ x: b.x, z: b.z, hw: b.hw, hd: b.hd })),
+  // and the mountain is one big rock
+  { x: MOUNTAIN.x, z: MOUNTAIN.z, r: MOUNTAIN.r },
 ]
 
 /**
@@ -120,6 +158,20 @@ const FOOTPRINTS = [
   { minX: -6, maxX: 6, minZ: -24, maxZ: -14 }, // the apron outside the gate
   { minX: -10, maxX: 10, minZ: -62, maxZ: -49 }, // keep
   { minX: -41, maxX: -13, minZ: -20, maxZ: -5 }, // stable
+  // the houses, each with a step of apron so grass doesn't grow up the walls
+  ...HOUSES.map((b) => ({
+    minX: b.x - b.hw - 1.4,
+    maxX: b.x + b.hw + 1.4,
+    minZ: b.z - b.hd - 1.4,
+    maxZ: b.z + b.hd + 1.4,
+  })),
+  // the mountain's skirt
+  {
+    minX: MOUNTAIN.x - MOUNTAIN.r - 2,
+    maxX: MOUNTAIN.x + MOUNTAIN.r + 2,
+    minZ: MOUNTAIN.z - MOUNTAIN.r - 2,
+    maxZ: MOUNTAIN.z + MOUNTAIN.r + 2,
+  },
 ]
 
 export function isBuiltOn(x, z) {

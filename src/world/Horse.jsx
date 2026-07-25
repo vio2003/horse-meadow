@@ -3,7 +3,8 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import HorseModel from './HorseModel'
 import TrustHearts from './TrustHearts'
-import { world, clampToWorld, lerpAngle, damp } from './shared'
+import { world, clampToWorld, clampToMeadow, lerpAngle, damp } from './shared'
+import { MEADOW, inRegion } from './regions'
 import { STALLS, STALL_APPROACH_Z } from './buildings'
 import { useGame, COATS, FOAL_SCALE, canRide } from '../store'
 import { whinny, nicker, munch, hoofstep, sparkle } from '../audio'
@@ -119,8 +120,13 @@ export default function Horse({ id, spawn, coatIndex, tamed, name, foal }) {
       }
     } else if (isTamed) {
       // ---- tamed but not ridden: hangs around, drifts toward the player
+      //
+      // Only while she's in the meadow, though. It can't leave, so following her
+      // to the beach would just mean leaning on the fence for as long as she was
+      // gone — which reads as a stuck horse rather than a horse waiting at home.
+      const canFollow = inRegion(MEADOW, world.playerPos.x, world.playerPos.z)
       a.graze += (0.7 - a.graze) * damp(dt, 1.2)
-      if (dist > kind.follow) {
+      if (canFollow && dist > kind.follow) {
         scratch.copy(world.playerPos).sub(pos)
         scratch.y = 0
         scratch.normalize()
@@ -261,7 +267,11 @@ export default function Horse({ id, spawn, coatIndex, tamed, name, foal }) {
 
     // One clamp at the end covers every branch above — ridden, stabled,
     // following, grazing, fleeing. A horse can never end up inside a wall.
-    clampToWorld(pos, 1.0)
+    //
+    // The horse she's *riding* gets the run of the whole world, because she's
+    // on it. Every other horse is held to the meadow, so the herd is always
+    // where she left it and taming never turns into a search party.
+    ;(isMounted ? clampToWorld : clampToMeadow)(pos, 1.0)
 
     a.speed = speed
     world.horseTrust.set(id, s.trust)
