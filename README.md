@@ -14,19 +14,40 @@ Vite prints a `Network:` URL. Open that on the iPad — same Wi-Fi, no build ste
 and every save you make reloads on her screen instantly. This is the loop you
 want on a Saturday.
 
-## Put it on her home screen
+## Two environments
 
-The PWA bits are already wired up (manifest, icons, service worker, offline
-cache). "Add to Home Screen" needs HTTPS, so:
+**Production — what she plays.** https://vio2003.github.io/horse-meadow/
+
+Open that in Safari on the iPad → Share → Add to Home Screen. She gets a real
+icon, no browser chrome, and it works with the Wi-Fi off.
+
+**Development — your laptop.** `npm run dev`, exactly as above. Nothing you do
+here can reach her: it's a different origin, so it has its own service worker and
+its own `localStorage`. Her horses are safe no matter what you break.
+
+### Promoting a version to production
+
+Deliberately **not** automatic. Pushing to `main` does nothing — otherwise the
+next half-finished feature you push would change the game she's mid-way through.
+Promotion is an explicit act:
 
 ```bash
-npm run build
-# then drag the dist/ folder onto app.netlify.com/drop, or:
-npx vercel deploy --prod
+git tag v2 && git push origin v2
 ```
 
-Open the URL in Safari on the iPad → Share → Add to Home Screen. She gets a real
-icon, no browser chrome, and it works with the Wi-Fi off.
+or press **Run workflow** on the Deploy to production action in GitHub. Either
+one builds and publishes; the tag doubles as a record of what she's playing.
+
+Her installed app updates itself on next launch (the service worker is set to
+`autoUpdate`), so she never reinstalls — which also means **a bad deploy reaches
+her**. Check it locally before you tag:
+
+```bash
+npm run build && npm run preview
+```
+
+That serves the exact production artefact on your network, so you can try it on
+the iPad before anyone else sees it.
 
 **Why not the App Store:** a free Apple developer account re-signs an app every
 7 days, so it dies on her iPad every week. The paid program is $99/yr. For an
