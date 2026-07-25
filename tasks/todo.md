@@ -494,3 +494,72 @@ pushes it over, and the order to reach for them in.
 The thing most likely to push it over is more skinned, animated characters —
 that's the expensive category, not ground or scatter. Cats and dragons are both
 open issues; those are the ones to re-check on the device rather than assume.
+
+---
+
+# Advanced Controls — GitHub issue #5
+
+Tap-to-move was the only way to drive. There's a joystick now, with jump and
+sprint, toggled from the top-right and saved. Tapping still works — this is a
+second way in, not a replacement.
+
+- [x] Toggle top-right, remembered between sessions
+- [x] Virtual joystick, bottom-left
+- [x] Jump and sprint, bottom-right
+- [x] 10 seconds of sprint, 15 to recover, shown as an arc round the button
+
+**Two decisions worth writing down.**
+
+*Jump is a hop, for the joy of it.* Nothing to jump over, and neither model has
+a jump clip. Jumping *over* things would mean suspending the clamp that
+guarantees she can never get stuck or leave the world, and landing outside it
+would leave her fighting the boundary to get back — so it's a scripted arc with
+a landing thump and no gameplay effect.
+
+*Sprint is the horse's, so it only works while riding* — which raises the dead
+button problem HUD.jsx already names. The sprint button fades out on foot, the
+same way the apple, brush and stable buttons do. On foot the stick is analog
+instead: a gentle push walks, a hard push runs, and past three-quarter tilt she
+counts as *running* and spooks horses. The game's whole lesson survives the new
+control scheme rather than being bypassed by it.
+
+**One addition beyond the issue.** Once stamina hits empty, sprint won't
+re-engage until a quarter has come back. Without that latch, holding the button
+at zero surges and dies sixty times a second as each frame's recovery is
+immediately spent. Being winded for a moment is better behaved and much easier
+for a six-year-old to read: it stops, then after a breath it works again.
+
+**Three things found by actually driving it.**
+
+1. **`setPointerCapture` can throw, and that latched the stick dead.** The
+   handler claimed the pointer id *before* capturing, so a failed capture left
+   `active` set forever and the joystick never worked again. Capture is a
+   convenience — it keeps tracking when her thumb slides off the base — so it's
+   in a try/catch now and the stick works without it.
+2. **The sprint button collided with "Hop down".** The dock is centred and the
+   actions sit bottom-right; on a narrow screen the wide pills run into them.
+   The dock lifts clear when the controls are on.
+3. **Nothing per-frame goes through React.** The knob and the stamina arc are
+   written straight to the DOM, the arc from its own animation frame loop. This
+   is the rule shared.js states at the top, and a stamina bar re-rendering at
+   60Hz is exactly what it exists to prevent.
+
+**Verification, and its limits.** `npm test` proves the parts that have rules:
+ten seconds empties the bar and fifteen refills it, stamina never leaves 0..1,
+the winded latch, the stick's dead zone and unit-circle clamp, that screen-up is
+−z, that a diagonal is no faster than a straight push, that driving at the fence
+or the castle ends somewhere legal, and that the toggle survives a reload without
+clobbering her horses.
+
+In the browser: a full push moved her exactly `RUN × 1.2s`, a gentle push gave
+0.39 tilt and did *not* count as running, the hop peaked at 0.84 and returned to
+0, the sprint button appeared only when mounted, the arc tracked stamina exactly
+(0.24 → 11.96 of 50 units) and turned raspberry below a quarter, and — the one
+that matters on a touchscreen — **the stick and sprint were held at once on two
+distinct pointer ids**, both live, both releasing cleanly.
+
+What could *not* be checked here is the real-time drain rate, because the browser
+pane throttles requestAnimationFrame to a few frames a second; three seconds of
+wall clock advanced the meter by a tenth of a second of game time. The rate is
+covered by the headless test at a true 60fps. **Worth a minute on the iPad**:
+hold sprint and count to ten.

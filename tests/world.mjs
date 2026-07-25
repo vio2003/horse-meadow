@@ -499,6 +499,139 @@ const { useGame: gone } = await server8.ssrLoadModule('/src/store.js')
 ok('a character that no longer exists falls back to the first',
   gone.getState().character === CHARACTERS[0].id, `${gone.getState().character}`)
 
+console.log('\n--- advanced controls ---')
+
+const C = await server.ssrLoadModule('/src/controls.js')
+
+/** Run the meter for `seconds`, sprinting or resting, at 60fps. */
+function wind(stamina, seconds, sprinting) {
+  const dt = 1 / 60
+  for (let i = 0; i < Math.round(seconds / dt); i++) {
+    stamina = C.stepStamina(stamina, { sprinting, dt })
+  }
+  return stamina
+}
+
+ok('ten seconds of sprinting empties the bar', wind(1, 10, true) <= 0.0001,
+  wind(1, 10, true).toFixed(4))
+ok('and it is not empty a moment before', wind(1, 9.5, true) > 0.02,
+  wind(1, 9.5, true).toFixed(3))
+ok('fifteen seconds of rest refills it', wind(0, 15, false) >= 0.9999,
+  wind(0, 15, false).toFixed(4))
+ok('and it is not full a moment before', wind(0, 14.5, false) < 0.99,
+  wind(0, 14.5, false).toFixed(3))
+ok('resting never overfills', wind(1, 30, false) === 1)
+ok('sprinting never goes below empty', wind(0, 30, true) === 0)
+ok('not sprinting only ever recovers', wind(0.5, 1, false) > 0.5)
+
+// The winded latch: empty means no sprint until it has recovered a quarter.
+ok('an empty horse will not sprint', !C.canSprint(0, false))
+ok('nor after a sliver of recovery', !C.canSprint(0.2, false))
+ok('but it will once it has a quarter back', C.canSprint(0.25, false))
+ok('a horse already sprinting keeps going on the last drop', C.canSprint(0.01, true))
+ok('and stops when there is nothing left', !C.canSprint(0, true))
+
+// Stick geometry. The camera never rotates, so up is -z and right is +x.
+const up = C.stickAxis(0, -50, 56)
+ok('pushing the stick up walks away from the camera', up.z < -0.99 && Math.abs(up.x) < 1e-9,
+  `${up.x.toFixed(2)},${up.z.toFixed(2)}`)
+const right = C.stickAxis(50, 0, 56)
+ok('pushing it right goes +x', right.x > 0.99 && Math.abs(right.z) < 1e-9)
+const down = C.stickAxis(0, 50, 56)
+ok('pushing it down comes back toward the camera', down.z > 0.99)
+
+ok('a nudge inside the dead zone does nothing', C.stickAxis(4, 4, 56).mag === 0)
+ok('a push past the rim is still full tilt, not more', C.stickAxis(0, -400, 56).mag === 1)
+const diag = C.stickAxis(40, -40, 56)
+ok('a diagonal is unit length, so it is no faster than straight',
+  Math.abs(Math.hypot(diag.x, diag.z) - 1) < 1e-9, Math.hypot(diag.x, diag.z).toFixed(6))
+ok('and its magnitude is what was actually pushed',
+  diag.mag > 0.99 && diag.mag <= 1, diag.mag.toFixed(3))
+
+/**
+ * Replay the stick exactly as Player and Horse do it: turn a thumb offset into
+ * an axis with the real stickAxis, step, clamp with the real clampToWorld.
+ *
+ * The browser is where this feature is *felt*, but the browser is not where it
+ * can be proved — so the arithmetic between thumb and position gets checked
+ * here, with the real functions, the same way walk() has always covered
+ * tap-to-move.
+ */
+function drive(from, { dx, dy, seconds = 1, top, sprint = false, sprintTop, clamp = clampToWorld, pad = 0.5 }) {
+  const pos = new THREE.Vector3(from[0], 0, from[1])
+  const dt = 1 / 60
+  const a = C.stickAxis(dx, dy, 56)
+  const speed = (sprint ? sprintTop : top) * a.mag
+  for (let i = 0; i < Math.round(seconds / dt); i++) {
+    pos.x += a.x * speed * dt
+    pos.z += a.z * speed * dt
+    clamp(pos, pad)
+  }
+  return { pos, axis: a, speed }
+}
+
+// On foot: RUN * mag, and past 0.75 tilt she is running (which spooks horses).
+const PLAYER_RUN = 5.4
+const full = drive([0, 6], { dx: 0, dy: -56, seconds: 1, top: PLAYER_RUN })
+ok('a full push walks her a full second of run speed',
+  Math.abs(full.pos.z - (6 - PLAYER_RUN)) < 0.05, `z ${full.pos.z.toFixed(2)}`)
+ok('and she ends up north of where she started', full.pos.z < 6)
+
+const half = drive([0, 6], { dx: 0, dy: -28, seconds: 1, top: PLAYER_RUN })
+ok('a half push moves her about half as far',
+  Math.abs((6 - half.pos.z) - PLAYER_RUN / 2) < 0.05, `${(6 - half.pos.z).toFixed(2)}`)
+ok('a half push is not running', half.axis.mag <= 0.75)
+ok('a full push is running', full.axis.mag > 0.75)
+
+const east = drive([0, 6], { dx: 56, dy: 0, seconds: 1, top: PLAYER_RUN })
+ok('pushing right takes her east', east.pos.x > 5 && Math.abs(east.pos.z - 6) < 1e-6,
+  `${east.pos.x.toFixed(2)},${east.pos.z.toFixed(2)}`)
+
+// The stick obeys the world's edges exactly as a tap does.
+const intoFence = drive([0, 40], { dx: 0, dy: 56, seconds: 8, top: PLAYER_RUN })
+ok('driving at the fence stops at the fence, it does not leave the world',
+  legal(intoFence.pos.x, intoFence.pos.z, 0), at({ pos: intoFence.pos }))
+const intoWall = drive([0, -16], { dx: 0, dy: -56, seconds: 8, top: PLAYER_RUN })
+ok('and driving at the castle never ends up inside it',
+  !inside(intoWall.pos.x, intoWall.pos.z, 0.5 - 1e-6), at({ pos: intoWall.pos }))
+
+// Mounted: sprint is meaningfully faster than a plain ride.
+const RIDE = 5.2
+const RIDE_SPRINT = 8.6
+const cruise = drive([0, 20], { dx: 0, dy: -56, seconds: 1, top: RIDE, sprintTop: RIDE_SPRINT })
+const flat = drive([0, 20], { dx: 0, dy: -56, seconds: 1, top: RIDE, sprintTop: RIDE_SPRINT, sprint: true })
+ok('sprinting covers more ground than cruising',
+  (20 - flat.pos.z) > (20 - cruise.pos.z) * 1.5,
+  `${(20 - cruise.pos.z).toFixed(1)} -> ${(20 - flat.pos.z).toFixed(1)} units`)
+
+// Ten seconds of sprinting is a real distance — the reason to want it at all.
+const sprintRun = 10 * RIDE_SPRINT
+ok('a full tank of sprint crosses most of the meadow', sprintRun > MEADOW_RADIUS,
+  `${sprintRun} units vs a ${MEADOW_RADIUS}-unit radius`)
+
+console.log('\n--- the controls toggle is remembered ---')
+
+store.clear()
+const server9 = await boot()
+const { useGame: adv } = await server9.ssrLoadModule('/src/store.js')
+ok('tap-to-move is the default', adv.getState().advanced === false)
+adv.getState().toggleAdvanced()
+ok('turning it on sticks', adv.getState().advanced === true)
+ok('and is written to the save',
+  JSON.parse(store.get('horse-meadow-save-v1')).advanced === true)
+
+adv.getState().tame('h1')
+adv.getState().nameHorse('h1', 'Star')
+const withHorse = JSON.parse(store.get('horse-meadow-save-v1'))
+ok('taming a horse does not lose the setting',
+  withHorse.advanced === true && withHorse.tamed.h1?.name === 'Star')
+
+const server10 = await boot()
+const { useGame: tomorrowAdv } = await server10.ssrLoadModule('/src/store.js')
+ok('and it is still on when she opens it tomorrow', tomorrowAdv.getState().advanced === true)
+tomorrowAdv.getState().toggleAdvanced()
+ok('turning it off sticks too', tomorrowAdv.getState().advanced === false)
+
 console.log('\n--- geometry sanity ---')
 const clear = B.CASTLE.gateTowerX - B.CASTLE.gateTowerR - 1.0
 ok('gate clears a padded horse', clear > 1.5, `clear half-width ${clear.toFixed(2)}`)
@@ -511,6 +644,8 @@ await server5.close()
 await server6.close()
 await server7.close()
 await server8.close()
+await server9.close()
+await server10.close()
 console.log(`\n${fails === 0 ? 'ALL PASS' : fails + ' FAILURES'}`)
 // exitCode rather than exit(): let the Vite/esbuild teardown finish, or it
 // prints "The build was canceled" over the top of the results.

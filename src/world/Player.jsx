@@ -6,6 +6,7 @@ import { STABLE_ZONE, inRect } from './buildings'
 import { SADDLE_Y } from './HorseModel'
 import PlayerModel from './PlayerModel'
 import { useGame } from '../store'
+import { stepStamina, canSprint } from '../controls'
 import { hoofstep } from '../audio'
 
 const WALK = 2.2
@@ -13,12 +14,18 @@ const RUN = 5.4
 /** Tap further than this and she runs — which is what spooks the horses. */
 export const RUN_DISTANCE = 7
 
+/** Push the stick past this and she's running, with everything that implies. */
+const STICK_RUN = 0.75
+/** How high the hop goes, and how long it takes. */
+const HOP_HEIGHT = 0.85
+const HOP_SECONDS = 0.55
+
 export default function Player() {
   const group = useRef()
   const bodyRef = useRef()
   const scratch = useMemo(() => new THREE.Vector3(), [])
   const lastPos = useMemo(() => new THREE.Vector3(), [])
-  const st = useRef({ stepClock: 0, walkPhase: 0, stalled: 0 })
+  const st = useRef({ stepClock: 0, walkPhase: 0, stalled: 0, hop: 0, lastJump: 0, sprinting: false })
   const character = useGame((s) => s.character)
   // Read by PlayerModel every frame to pick a clip and pose her for riding.
   const anim = useRef({ speed: 0, mounted: false })
@@ -50,6 +57,33 @@ export default function Player() {
     }
     lastPos.copy(world.playerPos)
 
+    // ---- the hop. One state machine here, because only one thing is ever off
+    // the ground: her, or the horse she's sitting on. Both read world.hopY.
+    if (world.jumpPulse !== s.lastJump) {
+      s.lastJump = world.jumpPulse
+      if (s.hop <= 0) {
+        s.hop = HOP_SECONDS
+        hoofstep(0.1)
+      }
+    }
+    if (s.hop > 0) {
+      s.hop = Math.max(0, s.hop - dt)
+      // A parabola through the airborne fraction: 0 at both ends, 1 in the
+      // middle. sin gives the same shape with less arithmetic.
+      world.hopY = Math.sin((1 - s.hop / HOP_SECONDS) * Math.PI) * HOP_HEIGHT
+      if (s.hop === 0) hoofstep(0.2) // landing
+    } else {
+      world.hopY = 0
+    }
+
+    // ---- stamina. It belongs to the ride, so it only ever drains while she's
+    // on a horse and that horse is actually going somewhere.
+    const wantSprint = world.sprintHeld && !!g.mounted
+    const moving = !!world.moveTarget || world.moveAxis.mag > 0
+    s.sprinting = wantSprint && moving && canSprint(world.stamina, s.sprinting)
+    world.stamina = stepStamina(world.stamina, { sprinting: s.sprinting, dt })
+    world.riderSprinting = s.sprinting
+
     if (g.mounted) {
       // Riding: sit on the horse's back and let the horse do the driving.
       const hp = world.horsePositions.get(g.mounted)
@@ -64,7 +98,7 @@ export default function Player() {
         const seatForward = 0.02
         group.current.position.set(
           hp.x + Math.sin(hy) * seatForward,
-          SADDLE_Y,
+          SADDLE_Y + world.hopY,
           hp.z + Math.cos(hy) * seatForward
         )
         group.current.rotation.y = hy
@@ -81,7 +115,26 @@ export default function Player() {
     anim.current.mounted = false
 
     let speed = 0
-    if (world.moveTarget) {
+    if (world.moveAxis.mag > 0) {
+      // ---- the stick wins. It's a live thumb; a moveTarget is a stale tap.
+      //
+      // Speed is analog, so a gentle push walks and a hard push runs — and past
+      // STICK_RUN she counts as running, which is what spooks horses. The whole
+      // lesson of this game is expressed as that one comparison, and it has to
+      // survive a new control scheme rather than be bypassed by it.
+      world.moveTarget = null
+      const a = world.moveAxis
+      speed = RUN * a.mag
+      world.playerRunning = a.mag > STICK_RUN
+      scratch.set(a.x, 0, a.z)
+      world.playerPos.addScaledVector(scratch, speed * dt)
+      clampToWorld(world.playerPos, 0.5)
+      group.current.rotation.y = lerpAngle(
+        group.current.rotation.y,
+        Math.atan2(a.x, a.z),
+        damp(dt, 9)
+      )
+    } else if (world.moveTarget) {
       scratch.copy(world.moveTarget).sub(world.playerPos)
       scratch.y = 0
       const d = scratch.length()
@@ -103,7 +156,7 @@ export default function Player() {
       world.playerRunning = false
     }
 
-    group.current.position.set(world.playerPos.x, 0, world.playerPos.z)
+    group.current.position.set(world.playerPos.x, world.hopY, world.playerPos.z)
 
     // The Walk and Run clips carry her own bob now, so the hand-rolled sine is
     // gone. Footsteps stay — they're paced to ground speed, not to the clip.

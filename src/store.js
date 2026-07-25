@@ -147,7 +147,7 @@ function loadSave() {
   }
 }
 
-function persist(horses, character) {
+function persist(horses, character, advanced) {
   try {
     const tamed = {}
     for (const h of horses) {
@@ -161,7 +161,7 @@ function persist(horses, character) {
         }
       }
     }
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ tamed, character }))
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ tamed, character, advanced }))
   } catch {
     // Private browsing or a full disk. Not worth interrupting play over.
   }
@@ -207,13 +207,26 @@ export const useGame = create((set, get) => ({
   mounted: null,
   /** Which of CHARACTERS she plays as. */
   character: characterOr(loadSave().character).id,
+  /**
+   * Joystick, jump and sprint instead of tap-to-move alone. Off by default —
+   * tapping is the control a six-year-old already understands, and this is the
+   * one she graduates to. Saved, so she doesn't have to switch it back on
+   * tomorrow.
+   */
+  advanced: !!loadSave().advanced,
 
   start: () => set({ started: true }),
+
+  toggleAdvanced: () => {
+    const advanced = !get().advanced
+    persist(get().horses, get().character, advanced)
+    set({ advanced })
+  },
 
   chooseCharacter: (id) => {
     const character = characterOr(id).id
     if (character === get().character) return
-    persist(get().horses, character)
+    persist(get().horses, character, get().advanced)
     set({ character })
   },
 
@@ -230,7 +243,7 @@ export const useGame = create((set, get) => ({
       // The growing-up clock starts here, and only here.
       h.id === id ? { ...h, tamed: true, tamedAt: h.tamedAt ?? Date.now() } : h
     )
-    persist(horses, get().character)
+    persist(horses, get().character, get().advanced)
     set({ horses, namingHorse: id })
   },
 
@@ -246,20 +259,20 @@ export const useGame = create((set, get) => ({
       .map((h) => h.id)
     if (grown.length === 0) return grown
     const horses = get().horses.map((h) => (grown.includes(h.id) ? { ...h, foal: false } : h))
-    persist(horses, get().character)
+    persist(horses, get().character, get().advanced)
     set({ horses })
     return grown
   },
 
   nameHorse: (id, name) => {
     const horses = get().horses.map((h) => (h.id === id ? { ...h, name } : h))
-    persist(horses, get().character)
+    persist(horses, get().character, get().advanced)
     set({ horses })
   },
 
   recolor: (id, coat) => {
     const horses = get().horses.map((h) => (h.id === id ? { ...h, coat } : h))
-    persist(horses, get().character)
+    persist(horses, get().character, get().advanced)
     set({ horses })
   },
 
@@ -275,14 +288,14 @@ export const useGame = create((set, get) => ({
     while (taken.has(slot)) slot++
     if (slot >= STALL_COUNT) return
     const horses = get().horses.map((h) => (h.id === id ? { ...h, stall: slot } : h))
-    persist(horses, get().character)
+    persist(horses, get().character, get().advanced)
     set({ horses, mounted: null })
   },
 
   /** Tapping a stabled horse opens its stall — it walks back out to her. */
   unstable: (id) => {
     const horses = get().horses.map((h) => (h.id === id ? { ...h, stall: null } : h))
-    persist(horses, get().character)
+    persist(horses, get().character, get().advanced)
     set({ horses })
   },
 }))

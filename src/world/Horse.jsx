@@ -12,6 +12,8 @@ import { whinny, nicker, munch, hoofstep, sparkle } from '../audio'
 const WALK = 1.3
 const FLEE = 6.4
 const RIDE = 5.2
+/** Sprinting, while there's wind for it. Fast enough to feel like a reward. */
+const RIDE_SPRINT = 8.6
 
 /**
  * What makes a foal a foal, beyond being small. It keeps much closer once it's
@@ -71,7 +73,20 @@ export default function Horse({ id, spawn, coatIndex, tamed, name, foal }) {
       // ---- being ridden: the horse becomes the player's vehicle
       s.mode = 'ridden'
       a.graze = 0
-      if (world.moveTarget) {
+      const ride = world.riderSprinting ? RIDE_SPRINT : RIDE
+      if (world.moveAxis.mag > 0) {
+        // Steered by the stick. Speed scales with how far it's pushed, so she
+        // can amble as well as charge, and sprint multiplies whatever that is.
+        world.moveTarget = null
+        scratch.set(world.moveAxis.x, 0, world.moveAxis.z)
+        speed = ride * world.moveAxis.mag
+        pos.addScaledVector(scratch, speed * dt)
+        group.current.rotation.y = lerpAngle(
+          group.current.rotation.y,
+          Math.atan2(scratch.x, scratch.z),
+          damp(dt, 6)
+        )
+      } else if (world.moveTarget) {
         scratch.copy(world.moveTarget).sub(pos)
         scratch.y = 0
         const d = scratch.length()
@@ -79,7 +94,7 @@ export default function Horse({ id, spawn, coatIndex, tamed, name, foal }) {
           world.moveTarget = null
         } else {
           scratch.normalize()
-          speed = RIDE
+          speed = ride
           pos.addScaledVector(scratch, Math.min(speed * dt, d))
           group.current.rotation.y = lerpAngle(
             group.current.rotation.y,
@@ -277,6 +292,9 @@ export default function Horse({ id, spawn, coatIndex, tamed, name, foal }) {
     world.horseTrust.set(id, s.trust)
 
     group.current.position.copy(pos)
+    // The hop lifts horse and rider together — Player owns the arc and puts it
+    // in world.hopY; the horse she's on is the only one that reads it.
+    if (isMounted) group.current.position.y = world.hopY
     world.horseRotations.set(id, group.current.rotation.y)
     if (heartsRef.current) heartsRef.current.setTrust(s.trust, !isTamed && dist < 6.5)
   })

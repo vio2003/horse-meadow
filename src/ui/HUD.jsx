@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useGame } from '../store'
 import { world } from '../world/shared'
 import { STALL_COUNT } from '../world/buildings'
+import Controls from './Controls'
 import { blip, nicker, sparkle } from '../audio'
 
 /**
@@ -16,6 +17,8 @@ export default function HUD() {
   const horses = useGame((s) => s.horses)
   const dismount = useGame((s) => s.dismount)
   const stableHorse = useGame((s) => s.stableHorse)
+  const advanced = useGame((s) => s.advanced)
+  const toggleAdvanced = useGame((s) => s.toggleAdvanced)
 
   const near = horses.find((h) => h.id === nearHorse)
   const canTame = !!near && !near.tamed && !mounted
@@ -47,7 +50,23 @@ export default function HUD() {
         </div>
       )}
 
-      <div className="dock">
+      {/* Top-right, opposite the tamed-horse counter. Pressed state is the
+          control itself, so she can see at a glance which mode she's in. */}
+      <button
+        className={`mode ${advanced ? 'on' : ''}`}
+        aria-label="Joystick controls"
+        aria-pressed={advanced}
+        onClick={() => {
+          toggleAdvanced()
+          blip(advanced ? 440 : 760)
+        }}
+      >
+        <span aria-hidden>🕹️</span>
+      </button>
+
+      {advanced && <Controls />}
+
+      <div className={`dock ${advanced ? 'dock--raised' : ''}`}>
         <div className={`dock-item ${canTame ? 'show' : ''}`}>
           <button
             className="tack"

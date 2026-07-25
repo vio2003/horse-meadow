@@ -27,6 +27,23 @@ export const world = {
   feedPulse: 0,
   /** True while the brush button is held down. */
   brushing: false,
+
+  // ---- advanced controls. All of it moves every frame, so none of it is React.
+  /**
+   * Joystick direction in world space, unit length, plus how far it's pushed.
+   * `mag` 0 means she isn't touching it and the tap-to-move target still rules.
+   */
+  moveAxis: { x: 0, z: 0, mag: 0 },
+  /** True while the sprint button is held — not the same as actually sprinting. */
+  sprintHeld: false,
+  /** The resolved answer: held, mounted, moving and with wind left. Horse reads it. */
+  riderSprinting: false,
+  /** The ridden horse's wind, 0..1. Player owns it; the HUD ring reads it. */
+  stamina: 1,
+  /** How high off the ground the hop currently is. Player owns it. */
+  hopY: 0,
+  /** Bumped by the jump button, consumed by Player. Same idiom as feedPulse. */
+  jumpPulse: 0,
   /** Set by Castle/Stable each frame — they fade their front out of the way. */
   insideCastle: false,
   insideStable: false,

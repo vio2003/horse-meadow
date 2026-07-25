@@ -132,6 +132,13 @@ canvas {
   align-items: center;
 }
 
+/* With the joystick and action buttons occupying the bottom corners, the dock's
+   wide pills ("Hop down", "Stay here") run into them on a narrow screen. Lift
+   the whole row clear rather than trying to squeeze it between them. */
+.dock--raised {
+  bottom: calc(150px + env(safe-area-inset-bottom));
+}
+
 .dock-item {
   opacity: 0;
   transform: translateY(14px) scale(0.9);
@@ -164,6 +171,115 @@ canvas {
   font-size: 16px;
   font-weight: 700;
   opacity: 0.75;
+}
+
+/* ---------- advanced controls ---------- */
+
+.mode {
+  position: absolute;
+  top: calc(18px + env(safe-area-inset-top));
+  right: calc(18px + env(safe-area-inset-right));
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  background: rgba(255, 243, 208, 0.92);
+  box-shadow: 0 4px 0 rgba(169, 102, 60, 0.5), 0 8px 20px rgba(59, 42, 32, 0.2);
+  filter: grayscale(0.7);
+  opacity: 0.75;
+  transition: filter 160ms ease, opacity 160ms ease, transform 120ms ease;
+}
+
+.mode.on {
+  filter: none;
+  opacity: 1;
+  background: var(--leather);
+  box-shadow: 0 4px 0 var(--leather-dark), 0 8px 20px rgba(59, 42, 32, 0.28);
+}
+
+.mode:active {
+  transform: translateY(3px);
+}
+
+/* The stick is deliberately bigger than a finger: she is aiming with a thumb
+   that is also holding the iPad, and the dead zone is generous to match. */
+.stick {
+  position: absolute;
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  left: calc(28px + env(safe-area-inset-left));
+  width: 152px;
+  height: 152px;
+  border-radius: 50%;
+  background: rgba(255, 243, 208, 0.34);
+  border: 3px solid rgba(255, 243, 208, 0.7);
+  box-shadow: inset 0 3px 12px rgba(59, 42, 32, 0.18);
+  touch-action: none;
+}
+
+.stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 68px;
+  height: 68px;
+  margin: -34px 0 0 -34px;
+  border-radius: 50%;
+  background: var(--leather);
+  border: 3px solid var(--stitch);
+  box-shadow: 0 4px 0 var(--leather-dark), 0 8px 18px rgba(59, 42, 32, 0.3);
+  will-change: transform;
+}
+
+.actions {
+  position: absolute;
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  right: calc(28px + env(safe-area-inset-right));
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+
+.action {
+  font-size: 34px;
+}
+
+.sprint {
+  position: relative;
+  overflow: visible;
+}
+
+/* The wind, wrapped up the right-hand side of the sprint button. */
+.wind {
+  position: absolute;
+  inset: -9px;
+  width: calc(100% + 18px);
+  height: calc(100% + 18px);
+  pointer-events: none;
+  /* Rotate so the arc starts at the bottom and fills up the right side. */
+  transform: rotate(90deg);
+}
+
+.wind-track,
+.wind-arc {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.wind-track {
+  stroke: rgba(59, 42, 32, 0.22);
+}
+
+.wind-arc {
+  stroke: var(--buttermilk);
+  transition: stroke 200ms ease;
+}
+
+.wind-arc.low {
+  stroke: var(--raspberry);
 }
 
 /* ---------- overlays ---------- */
